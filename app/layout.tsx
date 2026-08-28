@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import "./globals.css";
@@ -21,8 +22,7 @@ export default function RootLayout({
       setUser(session?.user || null);
 
       if (session?.user) {
-        // Consultar el perfil incluyendo el nombre de la sede
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("profiles")
           .select("id, full_name, role, primary_branch_id, branches(name)")
           .eq("id", session.user.id)
@@ -31,7 +31,6 @@ export default function RootLayout({
         if (data) {
           setProfile(data);
         } else {
-          // Valores por defecto en caso de no encontrar registro en profiles
           setProfile({
             full_name: session.user.user_metadata?.full_name || session.user.email,
             role: "lider",
@@ -43,7 +42,6 @@ export default function RootLayout({
 
     fetchSessionAndProfile();
 
-    // Escuchar cambios de autenticación
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user || null);
       if (session?.user) {
@@ -73,41 +71,57 @@ export default function RootLayout({
     router.push("/login");
   };
 
-  // Prioridad del Nombre
   const displayName = 
     profile?.full_name || 
     user?.user_metadata?.full_name || 
     user?.user_metadata?.name || 
     user?.email;
 
-  // Sede y Rol con respaldo directo
   const branchName = profile?.branches?.name || "CFC Puente Alto";
   const roleName = profile?.role || "Líder";
 
   return (
     <html lang="es">
-      <body className="min-h-screen flex flex-col bg-slate-50">
+      <body className="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased">
         {/* Header Principal */}
-        <header className="bg-indigo-900 text-white shadow-md">
-          <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div>
-              <h1 className="text-xl font-bold tracking-wide">Centro Formacion Cristiano</h1>
-              <p className="text-xs text-indigo-200">Plataforma de Organización & Servidores</p>
-            </div>
+        <header className="bg-slate-900 text-white shadow-lg border-b border-slate-800">
+          <div className="max-w-7xl mx-auto px-4 py-3.5 flex flex-col sm:flex-row justify-between items-center gap-4">
+            
+            {/* BRANDING CON LOGO LIMPIO */}
+            <Link href="/" className="flex items-center gap-3.5 group">
+              <div className="relative w-11 h-11 bg-slate-950 p-1 rounded-full border border-slate-700/60 flex items-center justify-center transition-transform group-hover:scale-105 shadow-inner">
+                <Image
+                  src="/logo.png"
+                  alt="Iglesia CFC Logo"
+                  width={34}
+                  height={34}
+                  className="object-contain filter brightness-0 invert"
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <h1 className="text-base font-extrabold tracking-wide leading-tight text-white group-hover:text-amber-400 transition-colors">
+                  Centro de Formación Cristiana
+                </h1>
+                <p className="text-[11px] text-slate-400 font-medium tracking-wider uppercase">
+                  Plataforma de Organización & Servidores
+                </p>
+              </div>
+            </Link>
 
             {/* Estado de la Sesión y Usuario */}
             <div className="flex items-center gap-4">
               {user ? (
                 <div className="flex items-center gap-3 text-right">
-                  <div>
-                    <p className="text-xs font-bold text-white">{displayName}</p>
-                    <p className="text-[10px] text-indigo-200 uppercase font-semibold">
-                      📍 {branchName} | {roleName}
+                  <div className="hidden sm:block">
+                    <p className="text-xs font-bold text-slate-100">{displayName}</p>
+                    <p className="text-[10px] text-amber-400 uppercase font-bold tracking-wider">
+                      📍 {branchName} <span className="text-slate-500">|</span> {roleName}
                     </p>
                   </div>
                   <button
                     onClick={handleSignOut}
-                    className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-3 py-1.5 rounded-lg transition-colors font-medium"
+                    className="bg-rose-600 hover:bg-rose-500 text-white text-xs px-3.5 py-1.5 rounded-xl transition-all font-semibold shadow-sm hover:shadow-rose-900/30"
                   >
                     Salir
                   </button>
@@ -115,7 +129,7 @@ export default function RootLayout({
               ) : (
                 <Link
                   href="/login"
-                  className="bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold px-4 py-2 rounded-lg border border-indigo-600 transition-colors"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl border border-indigo-500 transition-all shadow-sm"
                 >
                   Iniciar Sesión
                 </Link>
@@ -124,18 +138,18 @@ export default function RootLayout({
           </div>
 
           {/* Navegación Principal */}
-          <nav className="bg-indigo-950 px-4 border-t border-indigo-800">
-            <div className="max-w-7xl mx-auto flex space-x-6 overflow-x-auto py-3 text-sm font-medium">
-              <Link href="/" className="text-white hover:text-indigo-300 whitespace-nowrap">
+          <nav className="bg-slate-950 px-4 border-t border-slate-800/80">
+            <div className="max-w-7xl mx-auto flex space-x-8 overflow-x-auto py-2.5 text-xs font-semibold tracking-wide">
+              <Link href="/" className="text-slate-300 hover:text-amber-400 whitespace-nowrap transition-colors">
                 Inicio / Cronograma
               </Link>
-              <Link href="/servidores" className="text-indigo-200 hover:text-white whitespace-nowrap">
+              <Link href="/servidores" className="text-slate-300 hover:text-amber-400 whitespace-nowrap transition-colors">
                 Servidores & Inscripción
               </Link>
-              <Link href="/adoracion" className="text-indigo-200 hover:text-white whitespace-nowrap">
+              <Link href="/adoracion" className="text-slate-300 hover:text-amber-400 whitespace-nowrap transition-colors">
                 Equipo de Adoración
               </Link>
-              <Link href="/escuela-dominical" className="text-indigo-200 hover:text-white whitespace-nowrap">
+              <Link href="/escuela-dominical" className="text-slate-300 hover:text-amber-400 whitespace-nowrap transition-colors">
                 Escuela Dominical
               </Link>
             </div>
@@ -147,7 +161,7 @@ export default function RootLayout({
 
         {/* Footer */}
         <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
-          © 2026 CFC Organizador. Desarrollado para la edificación del cuerpo de Cristo.
+          © 2026 Centro de Formación Cristiana. Desarrollado para la edificación del cuerpo de Cristo.
         </footer>
       </body>
     </html>

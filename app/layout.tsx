@@ -16,24 +16,44 @@ export default function RootLayout({
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
 
+  const fetchProfileData = async (authUser: any) => {
+    if (!authUser) return null;
+
+    // 1. Buscar en church_members probando por user_id, id o email
+    const { data: memberData } = await supabase
+      .from("church_members")
+      .select("id, full_name, role, branch_id, branches(name)")
+      .or(`user_id.eq.${authUser.id},id.eq.${authUser.id},email.eq.${authUser.email}`)
+      .maybeSingle();
+
+    if (memberData) return memberData;
+
+    // 2. Buscar en profiles como respaldo por id o email
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("id, full_name, role, primary_branch_id, branches(name)")
+      .or(`id.eq.${authUser.id},email.eq.${authUser.email}`)
+      .maybeSingle();
+
+    if (profileData) return profileData;
+
+    return null;
+  };
+
   useEffect(() => {
     const fetchSessionAndProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user || null);
 
       if (session?.user) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("id, full_name, role, primary_branch_id, branches(name)")
-          .eq("id", session.user.id)
-          .maybeSingle();
+        const userProfile = await fetchProfileData(session.user);
 
-        if (data) {
-          setProfile(data);
+        if (userProfile) {
+          setProfile(userProfile);
         } else {
           setProfile({
             full_name: session.user.user_metadata?.full_name || session.user.email,
-            role: "lider",
+            role: session.user.user_metadata?.role || "servidor",
             branches: { name: "CFC Puente Alto" }
           });
         }
@@ -45,15 +65,11 @@ export default function RootLayout({
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user || null);
       if (session?.user) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("id, full_name, role, primary_branch_id, branches(name)")
-          .eq("id", session.user.id)
-          .maybeSingle();
+        const userProfile = await fetchProfileData(session.user);
 
-        setProfile(data || {
+        setProfile(userProfile || {
           full_name: session.user.user_metadata?.full_name || session.user.email,
-          role: "lider",
+          role: session.user.user_metadata?.role || "servidor",
           branches: { name: "CFC Puente Alto" }
         });
       } else {
@@ -78,16 +94,25 @@ export default function RootLayout({
     user?.email;
 
   const branchName = profile?.branches?.name || "CFC Puente Alto";
-  const roleName = profile?.role || "Líder";
+  
+  // Formateador preciso de Rol
+  const formatRole = (role?: string) => {
+    if (!role) return "Servidor";
+    const cleanRole = role.toLowerCase().trim();
+    if (cleanRole === "admin" || cleanRole === "pastor") return "Pastor / Admin";
+    if (cleanRole === "lider" || cleanRole === "líder") return "Líder";
+    if (cleanRole === "coordinador") return "Coordinador";
+    return "Servidor";
+  };
+
+  const roleName = formatRole(profile?.role || user?.user_metadata?.role);
 
   return (
     <html lang="es">
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased">
-        {/* Header Principal */}
         <header className="bg-slate-900 text-white shadow-lg border-b border-slate-800">
           <div className="max-w-7xl mx-auto px-4 py-3.5 flex flex-col sm:flex-row justify-between items-center gap-4">
             
-            {/* BRANDING CON LOGO LIMPIO */}
             <Link href="/" className="flex items-center gap-3.5 group">
               <div className="relative w-11 h-11 bg-slate-950 p-1 rounded-full border border-slate-700/60 flex items-center justify-center transition-transform group-hover:scale-105 shadow-inner">
                 <Image
@@ -109,7 +134,6 @@ export default function RootLayout({
               </div>
             </Link>
 
-            {/* Estado de la Sesión y Usuario */}
             <div className="flex items-center gap-4">
               {user ? (
                 <div className="flex items-center gap-3 text-right">
@@ -137,7 +161,6 @@ export default function RootLayout({
             </div>
           </div>
 
-          {/* Navegación Principal */}
           <nav className="bg-slate-950 px-4 border-t border-slate-800/80">
             <div className="max-w-7xl mx-auto flex space-x-8 overflow-x-auto py-2.5 text-xs font-semibold tracking-wide">
               <Link href="/" className="text-slate-300 hover:text-amber-400 whitespace-nowrap transition-colors">
@@ -156,10 +179,8 @@ export default function RootLayout({
           </nav>
         </header>
 
-        {/* Contenido Dinámico */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">{children}</main>
 
-        {/* Footer */}
         <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
           © 2026 Centro de Formación Cristiana. Desarrollado para la edificación del cuerpo de Cristo.
         </footer>

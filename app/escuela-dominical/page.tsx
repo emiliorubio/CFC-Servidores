@@ -4,167 +4,357 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function EscuelaDominicalPage() {
-  const [loading, setLoading] = useState(true);
-  const [assignedTeachers, setAssignedTeachers] = useState<any[]>([]);
+  const [cultos, setCultos] = useState<any[]>([]);
+  const [selectedCulto, setSelectedCulto] = useState<string>("");
+  const [groupName, setGroupName] = useState("Párvulos (3-6 años)");
+  const [topic, setTopic] = useState("");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
-  const [lessons] = useState([
-    {
-      id: 1,
-      date: "Domingo 30 de Agosto",
-      topic: "La Armadura de Dios (Efesios 6)",
-      group: "Párvulos (4-7 años)",
-      teacher: "Tía Andrea",
-      material: "Guía_Colorear_Armadura.pdf",
-    },
-    {
-      id: 2,
-      date: "Domingo 30 de Agosto",
-      topic: "David y Goliat: La Fe y la Confianza",
-      group: "Juniors (8-12 años)",
-      teacher: "Tía Maria",
-      material: "Cuestionario_David.pdf",
-    },
-  ]);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [lessons, setLessons] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadEscuelaDominicalData();
+    fetchInitialData();
   }, []);
 
-  const loadEscuelaDominicalData = async () => {
+  const fetchInitialData = async () => {
     setLoading(true);
 
-    // 1. Obtener lista de equipos
+    // 1. Cultos
+    const { data: serviceData } = await supabase
+      .from("service_schedules")
+      .select("*")
+      .order("service_date", { ascending: true });
+
+    // 2. Datos para cruce de nombres y equipos
     const { data: teamsData } = await supabase.from("teams").select("id, name");
-    
-    // 2. Obtener usuarios y miembros para el cruce de nombres
     const { data: profiles } = await supabase.from("profiles").select("id, full_name");
     const { data: members } = await supabase.from("church_members").select("id, full_name");
+    const { data: assignData } = await supabase.from("roster_assignments").select("*");
+    const { data: lessonData } = await supabase.from("sunday_school_lessons").select("*");
 
-    // 3. Obtener asignaciones
-    const { data: assignments } = await supabase.from("roster_assignments").select("*");
+    if (serviceData && serviceData.length > 0) {
+      setCultos(serviceData);
+      setSelectedCulto(serviceData[0].id);
+    }
 
-    if (assignments) {
-      const filtered = assignments.filter((asgn) => {
-        const teamObj = teamsData?.find(t => t.id === asgn.team_id);
-        const teamName = (teamObj?.name || asgn.area || "").toLowerCase();
-        
-        return (
-          teamName.includes("escuela") ||
-          teamName.includes("dominical") ||
-          teamName.includes("niño") ||
-          teamName.includes("párvulo") ||
-          teamName.includes("maestra")
-        );
-      }).map((asgn) => {
+    if (assignData) {
+      const enrichedAssignments = assignData.map((asgn) => {
         let name = asgn.user_name || "";
         if (!name) {
-          const prof = profiles?.find(p => p.id === asgn.profile_id);
-          const mem = members?.find(m => m.id === asgn.member_id);
-          name = prof?.full_name || mem?.full_name || "Servidor Confirmado";
+          const prof = profiles?.find((p) => p.id === asgn.profile_id);
+          const mem = members?.find((m) => m.id === asgn.member_id);
+          name = prof?.full_name || mem?.full_name || "Maestra Confirmada";
         }
+        const teamObj = teamsData?.find((t) => t.id === asgn.team_id);
+        const areaName = teamObj?.name || asgn.area || "";
 
-        return {
-          ...asgn,
-          displayName: name
-        };
+        return { ...asgn, displayName: name, resolvedArea: areaName };
       });
-
-      setAssignedTeachers(filtered);
+      setAssignments(enrichedAssignments);
     }
+
+    if (lessonData) setLessons(lessonData);
 
     setLoading(false);
   };
 
+  // Formateador de Fecha limpia
+  const formatCleanDate = (culto: any) => {
+    const dateStr = culto.service_date || culto.date;
+    if (!dateStr) return "Fecha por confirmar";
+
+    const rawDate = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.split(" ")[0];
+    const parts = rawDate.split("-");
+    if (parts.length < 3) return dateStr;
+
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+
+    const dateObj = new Date(year, month, day);
+    const formatted = dateObj.toLocaleDateString("es-ES", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  };
+
+  // Formateador de Hora corregido
+  const formatCleanTime = (culto: any) => {
+    const explicitTime = culto.service_time || culto.time || culto.start_time || culto.hora;
+    if (explicitTime) {
+      const [hh, mm] = explicitTime.split(":");
+      if (hh && mm) return `${hh}:${mm} hrs`;
+    }
+
+    const dateStr = culto.service_date || culto.date || "";
+    if (dateStr.includes("T")) {
+      const timePart = dateStr.split("T")[1];
+      if (timePart && !timePart.startsWith("00:00")) {
+        const [hh, mm] = timePart.split(":");
+        if (hh && mm) return `${hh}:${mm} hrs`;
+      }
+    } else if (dateStr.includes(" ")) {
+      const timePart = dateStr.split(" ")[1];
+      if (timePart && !timePart.startsWith("00:00")) {
+        const [hh, mm] = timePart.split(":");
+        if (hh && mm) return `${hh}:${mm} hrs`;
+      }
+    }
+
+    return "Por confirmar";
+  };
+
+  // Subir lección con PDF al bucket "materials"
+  const handleCreateLesson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCulto || !topic.trim()) return;
+
+    setSaving(true);
+    let uploadedPdfUrl = "";
+
+    if (pdfFile) {
+      const fileExt = pdfFile.name.split(".").pop();
+      const fileName = `escuela_${Date.now()}.${fileExt}`;
+      const filePath = `lecciones/${fileName}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("materials")
+        .upload(filePath, pdfFile);
+
+      if (uploadError) {
+        console.error("Error al subir el archivo PDF:", uploadError);
+      } else if (uploadData) {
+        const { data: publicUrlData } = supabase.storage
+          .from("materials")
+          .getPublicUrl(filePath);
+
+        uploadedPdfUrl = publicUrlData.publicUrl;
+      }
+    }
+
+    const { error } = await supabase.from("sunday_school_lessons").insert([
+      {
+        service_schedule_id: selectedCulto,
+        group_name: groupName,
+        topic: topic.trim(),
+        material_url: uploadedPdfUrl || null,
+      },
+    ]);
+
+    if (!error) {
+      setTopic("");
+      setPdfFile(null);
+      const fileInput = document.getElementById("pdf-input") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
+      fetchInitialData();
+    } else {
+      console.error("Error al guardar lección:", error);
+    }
+
+    setSaving(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <p className="text-slate-600 font-medium">Cargando Escuela Dominical...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header del Área */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-              Espacio Exclusivo Maestras
-            </span>
-            <span className="text-xs text-slate-500">Sede CFC Puente Alto</span>
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mt-1">Escuela Dominical</h2>
-          <p className="text-slate-600 text-sm">
-            Planificación de clases, asignación de grupos y descarga de recursos educativos.
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        
+        {/* ENCABEZADO */}
+        <div className="bg-amber-600 text-white p-8 rounded-3xl shadow-lg space-y-2">
+          <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-3 py-1 rounded-full">
+            MINISTERIO INFANTIL
+          </span>
+          <h1 className="text-3xl font-extrabold tracking-tight">Escuela Dominical</h1>
+          <p className="text-sm text-amber-100 max-w-2xl">
+            Gestiona los temas, lecciones y materiales en PDF para las distintas clases del domingo.
           </p>
         </div>
-        <button className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
-          + Subir Nuevo Material / Lección
-        </button>
-      </div>
 
-      {/* SECCIÓN EN TIEMPO REAL */}
-      <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-xl shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-emerald-950 text-base flex items-center gap-2">
-            👩‍🏫 Maestras / Servidores Confirmados para este Domingo
-          </h3>
-          <button 
-            onClick={loadEscuelaDominicalData}
-            className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold underline"
-          >
-            Actualizar Lista
-          </button>
-        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          
+          {/* FORMULARIO */}
+          <div className="md:col-span-1 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4 h-fit">
+            <h2 className="font-bold text-slate-800 text-lg">Nueva Lección</h2>
 
-        {loading ? (
-          <p className="text-xs text-emerald-700">Cargando servidores confirmados...</p>
-        ) : assignedTeachers.length === 0 ? (
-          <p className="text-xs text-emerald-800 italic">
-            Aún no hay maestras anotadas desde el panel de Servidores para Escuela Dominical.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-            {assignedTeachers.map((t) => (
-              <div key={t.id} className="bg-white p-3 rounded-lg border border-emerald-200 shadow-sm flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold text-xs">
-                  {t.displayName.charAt(0)}
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800 text-xs">{t.displayName}</p>
-                  <p className="text-[11px] text-emerald-700 font-medium">📍 Escuela Dominical</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Cronograma de Clases */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-        <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3">
-          Cronograma y Lecciones de la Semana
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {lessons.map((lesson) => (
-            <div key={lesson.id} className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
-              <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                  {lesson.group}
-                </span>
-                <span className="text-xs text-slate-500">{lesson.date}</span>
+            <form onSubmit={handleCreateLesson} className="space-y-4">
+              
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  Culto / Servicio
+                </label>
+                <select
+                  value={selectedCulto}
+                  onChange={(e) => setSelectedCulto(e.target.value)}
+                  className="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  {cultos.map((culto) => (
+                    <option key={culto.id} value={culto.id}>
+                      {culto.title || "Culto"} — {formatCleanDate(culto)} ({formatCleanTime(culto)})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <h4 className="font-bold text-slate-800 text-base">{lesson.topic}</h4>
-                <p className="text-xs text-slate-600 mt-1">
-                  Maestra a Cargo: <span className="font-medium text-slate-800">{lesson.teacher}</span>
-                </p>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  Grupo / Edad
+                </label>
+                <select
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  className="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="Párvulos (3-6 años)">Párvulos (3-6 años)</option>
+                  <option value="Intermedios (7-10 años)">Intermedios (7-10 años)</option>
+                  <option value="Pre-Adolescentes (11-13 años)">Pre-Adolescentes (11-13 años)</option>
+                  <option value="General Infantil">General Infantil</option>
+                </select>
               </div>
 
-              <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
-                <span className="text-xs text-slate-500 truncate max-w-[180px]">📄 {lesson.material}</span>
-                <button className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-300 px-3 py-1.5 rounded-md transition-colors">
-                  Descargar Material
-                </button>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  Tema o Pasaje Bíblico
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: David y Goliat (1 Samuel 17)"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  required
+                  className="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
               </div>
-            </div>
-          ))}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  Material Adjunto (PDF opcional)
+                </label>
+                <input
+                  id="pdf-input"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-3 px-4 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {saving ? "Subiendo material..." : "Guardar Lección"}
+              </button>
+            </form>
+          </div>
+
+          {/* LISTADO DE LECCIONES Y MAESTRAS CONFIRMADAS */}
+          <div className="md:col-span-2 space-y-4">
+            <h2 className="font-bold text-slate-800 text-lg">Programación de Clases</h2>
+
+            {cultos.map((culto) => {
+              const cultLessons = lessons.filter((l) => l.service_schedule_id === culto.id);
+              
+              // Filtro para obtener Maestras/Servidores confirmados para este culto
+              const cultoAssignments = assignments.filter((a) => a.service_schedule_id === culto.id);
+              const kidsTeachers = cultoAssignments.filter((a) =>
+                a.resolvedArea.toLowerCase().includes("escuela") ||
+                a.resolvedArea.toLowerCase().includes("dominical") ||
+                a.resolvedArea.toLowerCase().includes("niño") ||
+                a.resolvedArea.toLowerCase().includes("maestra") ||
+                a.resolvedArea.toLowerCase().includes("profesor")
+              );
+
+              return (
+                <div key={culto.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-4">
+                  
+                  {/* CABECERA CULTO */}
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-base">
+                        {culto.title || culto.service_type || "Culto Dominical"}
+                      </h3>
+                      <p className="text-xs text-amber-700 font-semibold mt-0.5">
+                        🗓️ {formatCleanDate(culto)} — ⏰ {formatCleanTime(culto)}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full">
+                      {cultLessons.length} clase(s)
+                    </span>
+                  </div>
+
+                  {/* BLOQUE MAESTRAS CONFIRMADAS */}
+                  <div className="bg-amber-50/80 border border-amber-200/70 rounded-2xl p-3">
+                    <span className="text-xs font-bold text-amber-950 block mb-0.5">
+                      👩‍🏫 Maestra(s) / Encargado(s) Confirmados:
+                    </span>
+                    {kidsTeachers.length > 0 ? (
+                      <p className="text-xs font-semibold text-amber-900">
+                        👥 {kidsTeachers.map((t) => t.displayName).join(", ")}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-amber-700/80 italic">
+                        Sin maestras asignadas aún en el cronograma.
+                      </p>
+                    )}
+                  </div>
+
+                  <hr className="border-slate-100" />
+
+                  {/* LISTADO DE LECCIONES DEL CULTO */}
+                  {cultLessons.length > 0 ? (
+                    <div className="grid gap-3">
+                      {cultLessons.map((lesson) => (
+                        <div
+                          key={lesson.id}
+                          className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex justify-between items-center"
+                        >
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-amber-800 uppercase bg-amber-100 px-2 py-0.5 rounded-md">
+                              {lesson.group_name}
+                            </span>
+                            <p className="text-xs font-bold text-slate-800">
+                              📖 Tema: {lesson.topic}
+                            </p>
+                          </div>
+
+                          {lesson.material_url && (
+                            <a
+                              href={lesson.material_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1 shadow-sm shrink-0"
+                            >
+                              📄 Abrir PDF
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">No hay temas ni lecciones cargadas para este culto.</p>
+                  )}
+
+                </div>
+              );
+            })}
+          </div>
+
         </div>
+
       </div>
     </div>
   );

@@ -91,7 +91,7 @@ export default function RootLayout({
         <header className="bg-indigo-900 text-white shadow-md">
           <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
-              <h1 className="text-xl font-bold tracking-wide">Centro Familiar Cristiano</h1>
+              <h1 className="text-xl font-bold tracking-wide">Centro Formacion Cristiano</h1>
               <p className="text-xs text-indigo-200">Plataforma de Organización & Servidores</p>
             </div>
 

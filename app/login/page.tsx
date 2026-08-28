@@ -59,7 +59,7 @@ export default function AuthPage() {
     }
   };
 
-  // Manejador de Registro con Sede y Rol
+  // Manejador de Registro con Sede y Rol (Optimizado para Trigger de DB)
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -71,13 +71,15 @@ export default function AuthPage() {
       return;
     }
 
-    // 1. Crear usuario en Auth de Supabase
+    // Registrar usuario en Auth enviando metadata completa para el Trigger
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
+          role: role,
+          primary_branch_id: selectedBranch,
         },
       },
     });
@@ -89,21 +91,9 @@ export default function AuthPage() {
     }
 
     if (data.user) {
-      // 2. Insertar/Actualizar perfil con la Sede y el Rol elegidos
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        id: data.user.id,
-        full_name: fullName,
-        primary_branch_id: selectedBranch,
-        role: role, // Guarda 'servidor', 'lider', o 'admin'
-      });
-
-      if (profileError) {
-        setErrorMessage("Usuario creado, pero hubo un error al guardar el perfil: " + profileError.message);
-      } else {
-        alert("¡Cuenta creada exitosamente!");
-        router.push("/servidores");
-        router.refresh();
-      }
+      alert("¡Cuenta creada exitosamente!");
+      router.push("/servidores");
+      router.refresh();
     }
     setLoading(false);
   };

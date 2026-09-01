@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useOrganization } from "@/context/OrganizationContext";
 
 export default function EscuelaDominicalPage() {
+  const { org, loading: orgLoading } = useOrganization();
   const [cultos, setCultos] = useState<any[]>([]);
   const [selectedCulto, setSelectedCulto] = useState<string>("");
   const [groupName, setGroupName] = useState("Párvulos (3-6 años)");
@@ -16,24 +18,32 @@ export default function EscuelaDominicalPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    if (org?.id) fetchInitialData();
+  }, [org?.id]);
 
   const fetchInitialData = async () => {
+    if (!org?.id) return;
     setLoading(true);
 
     // 1. Cultos
     const { data: serviceData } = await supabase
       .from("service_schedules")
       .select("*")
+      .eq("organization_id", org.id)
       .order("service_date", { ascending: true });
 
     // 2. Datos para cruce de nombres y equipos
-    const { data: teamsData } = await supabase.from("teams").select("id, name");
-    const { data: profiles } = await supabase.from("profiles").select("id, full_name");
-    const { data: members } = await supabase.from("church_members").select("id, full_name");
-    const { data: assignData } = await supabase.from("roster_assignments").select("*");
-    const { data: lessonData } = await supabase.from("sunday_school_lessons").select("*");
+    const { data: teamsData } = await supabase.from("ministry_teams").select("id, name").eq("organization_id", org.id);
+    const { data: profiles } = await supabase.from("profiles").select("id, full_name").eq("organization_id", org.id);
+    const { data: members } = await supabase.from("church_members").select("id, full_name").eq("organization_id", org.id);
+    const { data: assignData } = await supabase
+      .from("service_assignments")
+      .select("*, profiles(full_name)")
+      .eq("organization_id", org.id);
+    const { data: lessonData } = await supabase
+      .from("sunday_school_lessons")
+      .select("*")
+      .eq("organization_id", org.id);
 
     if (serviceData && serviceData.length > 0) {
       setCultos(serviceData);
@@ -42,16 +52,16 @@ export default function EscuelaDominicalPage() {
 
     if (assignData) {
       const enrichedAssignments = assignData.map((asgn) => {
-        let name = asgn.user_name || "";
+        let name = asgn.manual_name || asgn.profiles?.full_name || "";
         if (!name) {
-          const prof = profiles?.find((p) => p.id === asgn.profile_id);
-          const mem = members?.find((m) => m.id === asgn.member_id);
+          const prof = profiles?.find((p) => p.id === asgn.user_id);
+          const mem = members?.find((m) => m.id === asgn.user_id);
           name = prof?.full_name || mem?.full_name || "Maestra Confirmada";
         }
         const teamObj = teamsData?.find((t) => t.id === asgn.team_id);
-        const areaName = teamObj?.name || asgn.area || "";
+        const areaName = teamObj?.name || asgn.role_assigned || "";
 
-        return { ...asgn, displayName: name, resolvedArea: areaName };
+        return { ...asgn, service_schedule_id: asgn.service_id, displayName: name, resolvedArea: areaName };
       });
       setAssignments(enrichedAssignments);
     }
@@ -113,7 +123,8 @@ export default function EscuelaDominicalPage() {
   // Subir lección con PDF al bucket "materials"
   const handleCreateLesson = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCulto || !topic.trim()) return;
+    const organizationId = org?.id;
+    if (!selectedCulto || !topic.trim() || !organizationId) return;
 
     setSaving(true);
     let uploadedPdfUrl = "";
@@ -121,7 +132,7 @@ export default function EscuelaDominicalPage() {
     if (pdfFile) {
       const fileExt = pdfFile.name.split(".").pop();
       const fileName = `escuela_${Date.now()}.${fileExt}`;
-      const filePath = `lecciones/${fileName}`;
+      const filePath = `${organizationId}/lecciones/${fileName}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("materials")
@@ -141,6 +152,7 @@ export default function EscuelaDominicalPage() {
     const { error } = await supabase.from("sunday_school_lessons").insert([
       {
         service_schedule_id: selectedCulto,
+        organization_id: organizationId,
         group_name: groupName,
         topic: topic.trim(),
         material_url: uploadedPdfUrl || null,
@@ -160,7 +172,7 @@ export default function EscuelaDominicalPage() {
     setSaving(false);
   };
 
-  if (loading) {
+  if (loading || orgLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <p className="text-slate-600 font-medium">Cargando Escuela Dominical...</p>

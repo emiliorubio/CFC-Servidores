@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
+import { useOrganization } from "@/context/OrganizationContext";
 
 // Roles específicos del Ministerio de Adoración
 const ADORACION_ROLES = [
@@ -19,7 +19,7 @@ const ADORACION_ROLES = [
 ];
 
 export default function AdoracionPage() {
-  const router = useRouter();
+  const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
   const [loading, setLoading] = useState(true);
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
 
@@ -27,12 +27,8 @@ export default function AdoracionPage() {
   const [servidores, setServidores] = useState<any[]>([]);
   const [churchMembers, setChurchMembers] = useState<any[]>([]);
   const [cultos, setCultos] = useState<any[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
-
-  // Sede Seleccionada
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
 
   // ID del equipo de Adoración
   const [adoracionTeamId, setAdoracionTeamId] = useState<string>("");
@@ -63,66 +59,19 @@ export default function AdoracionPage() {
   };
 
   useEffect(() => {
-    loadAllData();
-  }, [selectedBranchId]);
+    if (org?.id) loadAllData();
+  }, [org?.id, userProfile?.id]);
 
   const loadAllData = async () => {
+    if (!org?.id) return;
     setLoading(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      router.push("/login");
-      return;
-    }
-
-    const metadataName = 
-      session.user.user_metadata?.full_name || 
-      session.user.user_metadata?.name || 
-      session.user.email?.split("@")[0] ||
-      "Músico/Cantante";
-
-    // 1. Perfil del Usuario
-    const { data: myProfile } = await supabase
-      .from("profiles")
-      .select(`id, full_name, role, primary_branch_id, branch_id, branches(id, name)`)
-      .eq("id", session.user.id)
-      .maybeSingle();
-
-    let initialBranchId = selectedBranchId;
-    const metadataRole = session.user.user_metadata?.role || session.user.app_metadata?.role;
-
-    if (myProfile) {
-      const activeUser = {
-        ...myProfile,
-        full_name: myProfile.full_name || metadataName,
-        role: myProfile.role || metadataRole || "servidor"
-      };
-      setCurrentUserProfile(activeUser);
-      if (!initialBranchId) {
-        initialBranchId = myProfile.primary_branch_id || myProfile.branch_id || "";
-      }
-    } else {
-      setCurrentUserProfile({
-        id: session.user.id,
-        full_name: metadataName,
-        role: metadataRole || "lider",
-        branches: { name: "CFC Puente Alto" }
-      });
-    }
-
-    // 2. Sedes
-    const { data: bData } = await supabase.from("branches").select("id, name");
-    if (bData) {
-      setBranches(bData);
-      if (!initialBranchId && bData.length > 0) {
-        initialBranchId = bData[0].id;
-      }
-    }
-    if (!selectedBranchId && initialBranchId) {
-      setSelectedBranchId(initialBranchId);
-    }
+    setCurrentUserProfile(userProfile);
 
     // 3. Obtener/Identificar ID del Equipo de Adoración
-    const { data: tData } = await supabase.from("teams").select("id, name");
+    const { data: tData } = await supabase
+      .from("ministry_teams")
+      .select("id, name")
+      .eq("organization_id", org.id);
     if (tData) {
       setTeams(tData);
       const adoTeam = tData.find(t => 
@@ -137,10 +86,11 @@ export default function AdoracionPage() {
     const { data: serviceData } = await supabase
       .from("service_schedules")
       .select("*")
+      .eq("organization_id", org.id)
       .order("service_date", { ascending: true });
     
     if (serviceData) {
-      const branchCultos = serviceData.filter((c) => !c.branch_id || c.branch_id === initialBranchId);
+      const branchCultos = serviceData;
       setCultos(branchCultos);
 
       if (branchCultos.length > 0) {
@@ -153,20 +103,36 @@ export default function AdoracionPage() {
     // 5. Integrantes
     const { data: allProfiles } = await supabase
       .from("profiles")
-      .select(`id, full_name, role, primary_branch_id, branches(id, name)`);
+      .select("id, full_name, role")
+      .eq("organization_id", org.id);
     if (allProfiles) setServidores(allProfiles);
 
     const { data: membersData } = await supabase
       .from("church_members")
-      .select(`id, full_name, role, branch_id, team_id, branches(id, name), teams(id, name)`);
+      .select("id, full_name, role, team_id")
+      .eq("organization_id", org.id);
     if (membersData) setChurchMembers(membersData);
 
     // 6. Asignaciones de la Banda
-    const { data: assignData } = await supabase.from("roster_assignments").select(`*`);
-    if (assignData) setAssignments(assignData);
+    const { data: assignData } = await supabase
+      .from("service_assignments")
+      .select("*, profiles(full_name)")
+      .eq("organization_id", org.id);
+    if (assignData) {
+      setAssignments(assignData.map((assignment: any) => ({
+        ...assignment,
+        service_schedule_id: assignment.service_id,
+        profile_id: assignment.user_id,
+        user_name: assignment.manual_name || assignment.profiles?.full_name,
+        area: assignment.role_assigned,
+      })));
+    }
 
     // 7. Cargar Canciones / Setlist
-    const { data: songsData } = await supabase.from("service_songs").select("*").order("created_at", { ascending: true });
+    const serviceIds = (serviceData || []).map((service) => service.id);
+    const { data: songsData } = serviceIds.length > 0
+      ? await supabase.from("service_songs").select("*").eq("organization_id", org.id).in("service_schedule_id", serviceIds).order("created_at", { ascending: true })
+      : { data: [] };
     if (songsData) {
       const grouped = songsData.reduce((acc: any, song: any) => {
         acc[song.service_schedule_id] = acc[song.service_schedule_id] || [];
@@ -179,39 +145,28 @@ export default function AdoracionPage() {
     setLoading(false);
   };
 
-  const isLiderOrAdmin =
-    currentUserProfile?.role?.toLowerCase() === "lider" ||
-    currentUserProfile?.role?.toLowerCase() === "admin" ||
-    currentUserProfile?.role?.toLowerCase() === "pastor" ||
-    currentUserProfile?.role?.toLowerCase() === "director";
+  const isLiderOrAdmin = userRole === "lider" || userRole === "admin" || userRole === "superadmin";
 
   // Auto-agendarse en la Banda
   const handleSelfAssign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selfCultoId || !currentUserProfile?.id) {
+    if (!selfCultoId || !userProfile?.id || !org?.id) {
       alert("Selecciona un culto válido.");
       return;
     }
 
-    const myName = currentUserProfile.full_name || "Músico";
-
     const payload = {
-      service_schedule_id: selfCultoId,
+      service_id: selfCultoId,
       team_id: adoracionTeamId,
-      profile_id: currentUserProfile.id,
-      area: `Adoración: ${selfInstrument}`,
-      user_name: myName
+      user_id: userProfile.id,
+      role_assigned: selfInstrument,
+      organization_id: org.id,
     };
 
-    const { error } = await supabase.from("roster_assignments").insert(payload);
-
+    const { error } = await supabase.from("service_assignments").insert(payload);
     if (error) {
-      delete payload.user_name;
-      const { error: secondError } = await supabase.from("roster_assignments").insert(payload);
-      if (secondError) {
-        alert("Error al anotarte en la banda: " + secondError.message);
-        return;
-      }
+      alert("Error al anotarte en la banda: " + error.message);
+      return;
     }
 
     alert(`¡Confirmado! Servirás como [${selfInstrument}] en la alabanza.`);
@@ -221,53 +176,24 @@ export default function AdoracionPage() {
   // Registrar Músico Manualmente (Para líderes)
   const handleAddManualServer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualName.trim() || !selectedBranchId || !manualCultoId) {
+    if (!manualName.trim() || !manualCultoId || !adoracionTeamId || !org?.id) {
       alert("Ingresa el nombre del integrante y el culto.");
       return;
     }
 
-    let memberId = null;
-    const existingMember = churchMembers.find(
-      (m) => m.full_name.trim().toLowerCase() === manualName.trim().toLowerCase()
-    );
-
-    if (existingMember) {
-      memberId = existingMember.id;
-    } else {
-      const { data: newMem, error: memError } = await supabase
-        .from("church_members")
-        .insert({
-          full_name: manualName,
-          role: "músico",
-          branch_id: selectedBranchId,
-          team_id: adoracionTeamId,
-        })
-        .select();
-
-      if (memError) {
-        alert("Error al guardar integrante: " + memError.message);
-        return;
-      }
-      if (newMem && newMem.length > 0) memberId = newMem[0].id;
-    }
-
-    const assignmentPayload: any = {
-      service_schedule_id: manualCultoId,
+    const assignmentPayload = {
+      service_id: manualCultoId,
       team_id: adoracionTeamId,
-      member_id: memberId,
-      area: `Adoración: ${manualInstrument}`,
-      user_name: manualName,
+      manual_name: manualName.trim(),
+      role_assigned: manualInstrument,
+      organization_id: org.id,
     };
 
-    const { error: assignErr } = await supabase.from("roster_assignments").insert(assignmentPayload);
+    const { error: assignErr } = await supabase.from("service_assignments").insert(assignmentPayload);
 
     if (assignErr) {
-      delete assignmentPayload.user_name;
-      const { error: retryErr } = await supabase.from("roster_assignments").insert(assignmentPayload);
-      if (retryErr) {
-        alert("Error al programar al músico: " + retryErr.message);
-        return;
-      }
+      alert("Error al programar al músico: " + assignErr.message);
+      return;
     }
 
     alert(`${manualName} asignado/a como [${manualInstrument}] exitosamente.`);
@@ -278,13 +204,15 @@ export default function AdoracionPage() {
   // Agregar Canción con todos los campos (Nombre, Cantante, Nota/Tono y Link)
   const handleAddSong = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!songTitle.trim() || !selectedCultoForSetlist) {
+    const organizationId = org?.id;
+    if (!songTitle.trim() || !selectedCultoForSetlist || !organizationId) {
       alert("Escribe el nombre de la canción.");
       return;
     }
 
     const songPayload = {
       service_schedule_id: selectedCultoForSetlist,
+      organization_id: organizationId,
       title: songTitle.trim(),
       artist: songArtist.trim() || null,
       key_note: songKey.trim() || null,
@@ -307,18 +235,19 @@ export default function AdoracionPage() {
   };
 
   const handleRemoveSong = async (songId: string) => {
-    const { error } = await supabase.from("service_songs").delete().eq("id", songId);
+    if (!org?.id) return;
+    const { error } = await supabase.from("service_songs").delete().eq("id", songId).eq("organization_id", org.id);
     if (!error) await loadAllData();
   };
 
   const handleRemoveAssignment = async (assignmentId: string) => {
-    const { error } = await supabase.from("roster_assignments").delete().eq("id", assignmentId);
+    const { error } = await supabase.from("service_assignments").delete().eq("id", assignmentId);
     if (!error) {
       setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
     }
   };
 
-  if (loading) {
+  if (loading || orgLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <p className="text-amber-400 font-medium animate-pulse">Cargando Ministerio de Adoración...</p>
@@ -326,7 +255,7 @@ export default function AdoracionPage() {
     );
   }
 
-  const currentBranchName = branches.find(b => b.id === selectedBranchId)?.name || "CFC Puente Alto";
+  const currentBranchName = org?.name || "tu iglesia";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6">
@@ -345,24 +274,9 @@ export default function AdoracionPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {isLiderOrAdmin ? (
-              <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-full text-xs font-semibold text-amber-300">
-                <span>📍 Sede:</span>
-                <select
-                  value={selectedBranchId}
-                  onChange={(e) => setSelectedBranchId(e.target.value)}
-                  className="bg-transparent font-bold text-amber-200 focus:outline-none cursor-pointer"
-                >
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id} className="bg-slate-900 text-white">{b.name}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <span className="text-xs font-semibold px-3 py-1.5 bg-slate-800 text-slate-300 rounded-full border border-slate-700">
-                📍 Sede: {currentBranchName}
-              </span>
-            )}
+            <span className="text-xs font-semibold px-3 py-1.5 bg-slate-800 text-slate-300 rounded-full border border-slate-700">
+              📍 Iglesia: {currentBranchName}
+            </span>
           </div>
         </div>
 

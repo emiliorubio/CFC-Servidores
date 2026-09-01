@@ -2,261 +2,259 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useOrganization } from "@/context/OrganizationContext";
 import Link from "next/link";
 
-export default function InicioPage() {
-  const [cultos, setCultos] = useState<any[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [lessons, setLessons] = useState<any[]>([]);
+interface ServiceSchedule {
+  id: string;
+  service_date: string;
+  title: string;
+  description?: string;
+  organization_id: string;
+}
+
+export default function HomePage() {
+  const { org, userRole, loading: orgLoading } = useOrganization();
+  const [schedules, setSchedules] = useState<ServiceSchedule[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Formulario para crear un nuevo culto
+  const [showModal, setShowModal] = useState(false);
+  const [title, setTitle] = useState("Culto Dominical");
+  const [serviceDate, setServiceDate] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  // Formateador de Fecha limpia
-  const formatCleanDate = (culto: any) => {
-    const dateStr = culto.service_date || culto.date;
-    if (!dateStr) return "Fecha por confirmar";
-
-    const rawDate = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.split(" ")[0];
-    const parts = rawDate.split("-");
-    if (parts.length < 3) return dateStr;
-
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-
-    const dateObj = new Date(year, month, day);
-    const formatted = dateObj.toLocaleDateString("es-ES", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
-
-    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
-  };
-
-  // Formateador de Hora dinámico
-  const formatCleanTime = (culto: any) => {
-    const explicitTime = culto.service_time || culto.time || culto.start_time || culto.hora;
-    if (explicitTime) {
-      const [hh, mm] = explicitTime.split(":");
-      if (hh && mm) return `${hh}:${mm} hrs`;
+    if (org?.id) {
+      fetchSchedules();
+    } else {
+      setLoading(false);
     }
+  }, [org, orgLoading]);
 
-    const dateStr = culto.service_date || culto.date || "";
-    if (dateStr.includes("T")) {
-      const timePart = dateStr.split("T")[1];
-      if (timePart && !timePart.startsWith("00:00")) {
-        const [hh, mm] = timePart.split(":");
-        if (hh && mm) return `${hh}:${mm} hrs`;
-      }
-    } else if (dateStr.includes(" ")) {
-      const timePart = dateStr.split(" ")[1];
-      if (timePart && !timePart.startsWith("00:00")) {
-        const [hh, mm] = timePart.split(":");
-        if (hh && mm) return `${hh}:${mm} hrs`;
-      }
-    }
-
-    return "Por confirmar";
-  };
-
-  const fetchDashboardData = async () => {
+  // Cargar cultos filtrados por la iglesia activa
+  const fetchSchedules = async () => {
+    if (!org?.id) return;
     setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("service_schedules")
+        .select("*")
+        .eq("organization_id", org.id)
+        .order("service_date", { ascending: true });
 
-    const { data: serviceData } = await supabase
-      .from("service_schedules")
-      .select("*")
-      .order("service_date", { ascending: true });
-
-    const { data: teamsData } = await supabase.from("teams").select("id, name");
-    const { data: profiles } = await supabase.from("profiles").select("id, full_name");
-    const { data: members } = await supabase.from("church_members").select("id, full_name");
-    const { data: assignData } = await supabase.from("roster_assignments").select("*");
-    const { data: lessonData } = await supabase.from("sunday_school_lessons").select("*");
-
-    if (assignData) {
-      const enrichedAssignments = assignData.map((asgn) => {
-        let name = asgn.user_name || "";
-        if (!name) {
-          const prof = profiles?.find((p) => p.id === asgn.profile_id);
-          const mem = members?.find((m) => m.id === asgn.member_id);
-          name = prof?.full_name || mem?.full_name || "Servidor Confirmado";
-        }
-        const teamObj = teamsData?.find((t) => t.id === asgn.team_id);
-        const areaName = teamObj?.name || asgn.area || "";
-
-        return { ...asgn, displayName: name, resolvedArea: areaName };
-      });
-      setAssignments(enrichedAssignments);
+      if (error) throw error;
+      setSchedules(data || []);
+    } catch (err) {
+      console.error("Error al cargar los servicios:", err);
+    } finally {
+      setLoading(false);
     }
-
-    if (serviceData) setCultos(serviceData);
-    if (lessonData) setLessons(lessonData);
-
-    setLoading(false);
   };
 
-  if (loading) {
+  const handleCreateSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!org?.id || !serviceDate) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("service_schedules").insert([
+        {
+          title,
+          service_date: serviceDate,
+          description,
+          organization_id: org.id,
+        },
+      ]);
+
+      if (error) throw error;
+
+      setShowModal(false);
+      setTitle("Culto Dominical");
+      setServiceDate("");
+      setDescription("");
+      fetchSchedules();
+    } catch (err: any) {
+      alert("Error al guardar culto: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isAdminOrLider = userRole === "admin" || userRole === "superadmin" || userRole === "lider";
+  const orgName = org?.name || "tu iglesia";
+
+  if (loading || orgLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-600 font-medium">Cargando Agenda Congregacional...</p>
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="w-8 h-8 border-4 border-slate-800 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-sm font-medium text-slate-500">Cargando cronograma...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        
-        {/* ENCABEZADO */}
-        <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-lg space-y-2">
-          <span className="text-xs font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full">
-            CRONOGRAMA OFICIAL
+    <div className="space-y-8">
+      
+      {/* Resumen público de la agenda, conservando el diseño de la versión anterior. */}
+      <div className="rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-slate-900 border border-slate-800">
+        <div className="space-y-2 max-w-2xl relative z-10">
+          <span className="bg-amber-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-amber-400 border border-amber-500/30">
+            Cronograma oficial
           </span>
-          <h1 className="text-3xl font-extrabold tracking-tight">Próximos Servicios & Cultos</h1>
-          <p className="text-sm text-slate-300 max-w-2xl">
-            Consulta los cultos programados, revisa las asignaciones de alabanza, predicadores, profesores de escuela dominical y anótate para servir.
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+            Próximos Servicios &amp; Cultos
+          </h1>
+          <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+            Consulta los cultos programados, revisa las asignaciones de alabanza, predicadores y escuela dominical, y anótate para servir en {orgName}.
           </p>
         </div>
 
-        {/* GRID DE CULTOS */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {cultos.map((culto) => {
-            const cultoAssignments = assignments.filter((a) => a.service_schedule_id === culto.id);
+        {isAdminOrLider && (
+          <button
+            onClick={() => setShowModal(true)}
+            className="relative z-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm whitespace-nowrap"
+          >
+            + Nuevo Culto / Servicio
+          </button>
+        )}
+      </div>
 
-            // Filtro Altar / Predicador
-            const preacherMembers = cultoAssignments.filter((a) =>
-              a.resolvedArea.toLowerCase().includes("altar") ||
-              a.resolvedArea.toLowerCase().includes("predic") ||
-              a.resolvedArea.toLowerCase().includes("pastor") ||
-              a.resolvedArea.toLowerCase().includes("palabra")
-            );
+      {/* Lista de Cultos / Cronograma */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <span>📅</span> Próximas Fechas
+        </h2>
 
-            // Filtro Alabanza
-            const alabanzaMembers = cultoAssignments.filter((a) =>
-              a.resolvedArea.toLowerCase().includes("adorac") ||
-              a.resolvedArea.toLowerCase().includes("alabanz") ||
-              a.resolvedArea.toLowerCase().includes("músic")
-            );
-
-            // Filtro Escuela Dominical
-            const kidsTeachers = cultoAssignments.filter((a) =>
-              a.resolvedArea.toLowerCase().includes("escuela") ||
-              a.resolvedArea.toLowerCase().includes("dominical") ||
-              a.resolvedArea.toLowerCase().includes("niño") ||
-              a.resolvedArea.toLowerCase().includes("maestra")
-            );
-
-            // Lecciones de este culto
-            const cultoLessons = lessons.filter((l) => l.service_schedule_id === culto.id);
-
-            return (
-              <div key={culto.id} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-4 flex flex-col justify-between">
-                <div className="space-y-4">
-                  
-                  {/* CABECERA CULTO CON FECHA/HORA REAL */}
+        {schedules.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-sm">
+            <div className="text-4xl">⛪</div>
+            <h3 className="text-base font-bold text-slate-800">Sin cultos registrados aún</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              No hay reuniones agendadas para <strong>{orgName}</strong>. {isAdminOrLider ? "Haz clic en el botón de arriba para agregar la primera." : "Inicia sesión con tu cuenta de líder para agendar fechas."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {schedules.map((schedule) => (
+              <div
+                key={schedule.id}
+                className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
+              >
+                <div className="space-y-3">
                   <div>
-                    <h3 className="font-bold text-slate-800 text-base">
-                      {culto.title || culto.service_type || "Culto Dominical"}
-                    </h3>
+                    <h3 className="text-base font-bold text-slate-800">{schedule.title}</h3>
                     <p className="text-xs text-indigo-600 font-semibold mt-1">
-                      🗓️ {formatCleanDate(culto)} — ⏰ {formatCleanTime(culto)}
+                      🗓️ {new Date(schedule.service_date).toLocaleDateString("es-CL", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      })}
                     </p>
                   </div>
+                  {schedule.description && (
+                    <p className="text-xs text-slate-500 line-clamp-2">{schedule.description}</p>
+                  )}
 
-                  <hr className="border-slate-100" />
-
-                  {/* BLOQUE: PREDICADOR / ALTAR */}
-                  <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3 space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-blue-900">📖 Predicador / Altar</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-200 text-blue-800 rounded-full">
-                        {preacherMembers.length > 0 ? "Confirmado" : "Pendiente"}
-                      </span>
+                  <div className="grid gap-2">
+                    <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-2.5">
+                      <p className="text-xs font-bold text-blue-900">📖 Predicador / Altar</p>
+                      <p className="text-[11px] text-blue-400 italic mt-1">Información disponible en el módulo de servidores.</p>
                     </div>
-                    {preacherMembers.length > 0 ? (
-                      <p className="text-xs text-blue-950 font-semibold">
-                        🎙️ {preacherMembers.map((m) => m.displayName).join(", ")}
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-blue-400 italic">Sin predicador asignado aún.</p>
-                    )}
-                  </div>
-
-                  {/* BLOQUE: ALABANZA */}
-                  <div className="bg-purple-50/60 border border-purple-100 rounded-2xl p-3 space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-purple-900">🎵 Equipo de Adoración</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 bg-purple-200 text-purple-800 rounded-full">
-                        {alabanzaMembers.length} Confirmado(s)
-                      </span>
+                    <div className="bg-purple-50/60 border border-purple-100 rounded-xl p-2.5">
+                      <p className="text-xs font-bold text-purple-900">🎵 Equipo de Adoración</p>
+                      <p className="text-[11px] text-purple-400 italic mt-1">Revisa y confirma a los músicos asignados.</p>
                     </div>
-                    {alabanzaMembers.length > 0 ? (
-                      <p className="text-xs text-purple-950 font-medium">
-                        👥 {alabanzaMembers.map((m) => m.displayName).join(", ")}
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-purple-400 italic">Sin músicos asignados aún.</p>
-                    )}
-                  </div>
-
-                  {/* BLOQUE: ESCUELA DOMINICAL */}
-                  <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-3 space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-amber-950">👧 Escuela Dominical</span>
-                      {kidsTeachers.length > 0 && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-200 text-amber-900 rounded-full">
-                          Asignado
-                        </span>
-                      )}
+                    <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-2.5">
+                      <p className="text-xs font-bold text-amber-950">👧 Escuela Dominical</p>
+                      <p className="text-[11px] text-amber-600/70 italic mt-1">Lecciones y profesores por confirmar.</p>
                     </div>
-
-                    {kidsTeachers.length > 0 ? (
-                      <p className="text-xs text-amber-950 font-semibold">
-                        👩‍🏫 Profe: {kidsTeachers.map((t) => t.displayName).join(", ")}
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-amber-600/70 italic">Profe por confirmar para este culto.</p>
-                    )}
-
-                    {cultoLessons.length > 0 && (
-                      <div className="pt-2 border-t border-amber-200/60 text-[11px] text-amber-900 space-y-1">
-                        {cultoLessons.map((l) => (
-                          <div key={l.id} className="flex justify-between items-center">
-                            <p>📖 <strong>{l.group_name}:</strong> {l.topic}</p>
-                            {l.material_url && (
-                              <a
-                                href={l.material_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[10px] bg-amber-200/80 hover:bg-amber-300 text-amber-950 font-bold px-1.5 py-0.5 rounded transition-colors ml-2"
-                              >
-                                PDF
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 <Link
-                  href="/servidores"
-                  className="block text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold py-2.5 px-3 rounded-xl border border-indigo-100 transition-colors mt-2"
+                  href={`/servidores?service_id=${schedule.id}`}
+                  className="w-full text-center bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2.5 rounded-xl text-xs transition-colors block"
                 >
                   Anotarme para Servir →
                 </Link>
-
               </div>
-            );
-          })}
-        </div>
-
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Modal para Crear Servicio */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-100">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-slate-800">Agregar Nuevo Culto</h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSchedule} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Título del Servicio</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ej. Culto Dominical / Noche de Milagros"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Fecha del Servicio</label>
+                <input
+                  type="date"
+                  required
+                  value={serviceDate}
+                  onChange={(e) => setServiceDate(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Descripción / Notas (Opcional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Información relevante para los servidores..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors"
+                >
+                  {saving ? "Guardando..." : "Crear Culto"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

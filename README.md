@@ -16,6 +16,40 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Multi-tenant por subdominio
+
+Cada organización se identifica con su `slug`: por ejemplo,
+`https://cfc-puente-alto.tu-dominio.cl/login` carga CFC Puente Alto y registra
+las cuentas nuevas en esa organización. Para probarlo localmente, usa
+`http://localhost:3000/login?org=cfc-puente-alto`.
+
+En Vercel agrega el dominio raíz y el comodín `*.tu-dominio.cl`; los dominios
+comodín requieren delegar los nameservers a Vercel. No se debe usar el dominio
+`vercel.app` para este flujo, porque no permite crear subdominios propios.
+
+En **Vercel → Settings → Environment Variables**, agrega `SUPABASE_SECRET_KEY`
+(o la clave heredada `SUPABASE_SERVICE_ROLE_KEY`). Es una clave exclusiva de
+servidor: no debe comenzar con `NEXT_PUBLIC_`, no se sube a Git y permite que
+`/api/signup` asigne la iglesia usando el subdominio. Ejecuta también la
+migración `20260831_create_profile_on_signup.sql` en Supabase antes de abrir el
+registro al público.
+
+### Cuentas de prueba
+
+El comando siguiente crea las cuatro organizaciones y, para cada una, 2 admins,
+4 líderes y 4 servidores. Requiere una clave secreta de Supabase solo en la
+terminal/entorno de Vercel; nunca se guarda en el repositorio.
+
+```powershell
+# Agrega estas mismas variables a .env.local (archivo ignorado por Git)
+$env:SUPABASE_SECRET_KEY = "sb_secret_..."
+$env:DEMO_USERS_PASSWORD = "una-clave-de-prueba-segura"
+npm run provision:demo
+```
+
+Los correos siguen el formato `admin1@cfc-puente-alto.example.test`,
+`lider1@cfc-puente-alto.example.test` y `servidor1@cfc-puente-alto.example.test`.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

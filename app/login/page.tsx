@@ -15,57 +15,36 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
+    setSuccessMsg("");
 
     try {
       if (isRegister) {
-        let activeOrgId = org?.id;
-
-        // Si estamos en localhost y no hay org activa, buscamos la iglesia por defecto
-        if (!activeOrgId) {
-          const { data: defaultOrg } = await supabase
-            .from("organizations")
-            .select("id")
-            .limit(1)
-            .maybeSingle();
-
-          activeOrgId = defaultOrg?.id;
-        }
+        const activeOrgId = org?.id;
 
         if (!activeOrgId) {
-          throw new Error("No hay iglesias registradas en la base de datos. Crea una en Supabase primero.");
+          throw new Error("Abre el enlace de tu iglesia para registrarte. En pruebas locales usa /login?org=el-slug-de-la-iglesia.");
         }
 
-        // 1. Crear usuario en Auth
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: fullName,
-              role: "servidor",
-              organization_id: activeOrgId,
-            },
-          },
+        const response = await fetch("/api/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullName, email, password, orgSlug: org?.slug }),
         });
-
-        if (authError) throw authError;
-
-        if (authData.user) {
-          // 2. Crear o actualizar perfil en la tabla 'profiles'
-          const { error: profileError } = await supabase.from("profiles").upsert({
-            id: authData.user.id,
-            full_name: fullName,
-            role: "servidor",
-            organization_id: activeOrgId,
-          });
-
-          if (profileError) throw profileError;
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || "No se pudo crear la cuenta.");
         }
+
+        setIsRegister(false);
+        setPassword("");
+        setSuccessMsg("Cuenta creada. Ya puedes iniciar sesión.");
+        return;
       } else {
         // Iniciar Sesión
         const { error: loginError } = await supabase.auth.signInWithPassword({
@@ -122,6 +101,12 @@ export default function AuthPage() {
         {errorMsg && (
           <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
             {errorMsg}
+          </div>
+        )}
+
+        {successMsg && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+            {successMsg}
           </div>
         )}
 

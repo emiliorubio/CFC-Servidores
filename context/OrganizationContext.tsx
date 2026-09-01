@@ -32,6 +32,22 @@ interface OrgContextType {
   switchOrganization: (orgId: string) => void;
 }
 
+function organizationSlugFromLocation() {
+  if (typeof window === "undefined") return null;
+
+  const hostname = window.location.hostname.toLowerCase();
+  const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+
+  // Permite probar una iglesia localmente sin alterar DNS:
+  // http://localhost:3000/login?org=cfc-puente-alto
+  if (isLocal) {
+    return new URLSearchParams(window.location.search).get("org");
+  }
+
+  const [subdomain] = hostname.split(".");
+  return subdomain && subdomain !== "www" ? subdomain : null;
+}
+
 const OrganizationContext = createContext<OrgContextType>({
   org: null,
   allOrgs: [],
@@ -60,12 +76,19 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       const { data: { session } } = await supabase.auth.getSession();
 
       // Cargar lista de iglesias para selector (solo accesible para SuperAdmin/Dev)
-      const { data: orgsData } = await supabase.from("organizations").select("*");
+      const { data: orgsData, error: orgsError } = await supabase.from("organizations").select("*");
+      if (orgsError) throw orgsError;
       const availableOrgs = orgsData || [];
       setAllOrgs(availableOrgs);
 
+      const hostSlug = organizationSlugFromLocation();
+      const organizationFromHost = hostSlug
+        ? availableOrgs.find((organization) => organization.slug.toLowerCase() === hostSlug.toLowerCase()) || null
+        : null;
+
       if (!session?.user) {
-        setOrg(null);
+        // Un visitante ve la identidad de la iglesia indicada por su subdominio.
+        setOrg(organizationFromHost);
         setUserProfile(null);
         setLoading(false);
         return;
@@ -101,7 +124,8 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
       if (targetOrgId) {
         const found = availableOrgs.find((o) => o.id === targetOrgId);
-        setOrg(found || null);
+        // Un usuario no puede entrar a otra iglesia usando únicamente su URL.
+        setOrg(organizationFromHost && found?.id !== organizationFromHost.id ? null : found || null);
       } else {
         setOrg(null); // No se asigna ninguna iglesia si el usuario no tiene una
       }

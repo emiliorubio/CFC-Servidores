@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { OrganizationProvider, useOrganization } from "@/context/OrganizationContext";
 import "./globals.css";
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { org, userRole, loading: orgLoading } = useOrganization();
 
   const [user, setUser] = useState<any>(null);
@@ -77,6 +78,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   };
 
   const roleName = formatRole(profile?.role);
+
+  // La pantalla de acceso debe estar disponible aunque la carga de la
+  // organización falle o todavía no haya una sesión iniciada.
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
 
   // Estado 1: Cargando datos
   if (orgLoading || authLoading) {

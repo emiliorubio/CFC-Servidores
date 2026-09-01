@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
+import RestrictedAccess from "@/components/RestrictedAccess";
 
 // Roles específicos del Ministerio de Adoración
 const ADORACION_ROLES = [
@@ -241,11 +242,22 @@ export default function AdoracionPage() {
   };
 
   const handleRemoveAssignment = async (assignmentId: string) => {
-    const { error } = await supabase.from("service_assignments").delete().eq("id", assignmentId);
+    if (!org?.id) return;
+    const { error } = await supabase
+      .from("service_assignments")
+      .delete()
+      .eq("id", assignmentId)
+      .eq("organization_id", org.id);
     if (!error) {
       setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
     }
   };
+
+  if (!orgLoading && (!isLiderOrAdmin || !org)) {
+    return (
+      <RestrictedAccess message="El módulo de adoración está disponible para líderes y administradores con una iglesia asignada." />
+    );
+  }
 
   if (loading || orgLoading) {
     return (

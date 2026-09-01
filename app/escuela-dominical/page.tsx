@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
+import RestrictedAccess from "@/components/RestrictedAccess";
 
 export default function EscuelaDominicalPage() {
-  const { org, loading: orgLoading } = useOrganization();
+  const { org, userRole, loading: orgLoading } = useOrganization();
   const [cultos, setCultos] = useState<any[]>([]);
   const [selectedCulto, setSelectedCulto] = useState<string>("");
   const [groupName, setGroupName] = useState("Párvulos (3-6 años)");
@@ -171,6 +172,13 @@ export default function EscuelaDominicalPage() {
 
     setSaving(false);
   };
+
+  const isLiderOrAdmin = userRole === "lider" || userRole === "admin" || userRole === "superadmin";
+  if (!orgLoading && (!isLiderOrAdmin || !org)) {
+    return (
+      <RestrictedAccess message="La programación de Escuela Dominical está disponible para líderes y administradores con una iglesia asignada." />
+    );
+  }
 
   if (loading || orgLoading) {
     return (

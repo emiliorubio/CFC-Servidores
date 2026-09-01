@@ -149,7 +149,8 @@ export default function ServidoresPage() {
 
       if (error) throw error;
       setManualName("");
-      fetchDataForService(activeServiceId!);
+      setActiveServiceId(manualServiceId);
+      await fetchDataForService(manualServiceId);
     } catch (err: any) {
       alert("Error al anotar hermano: " + err.message);
     } finally {
@@ -179,7 +180,8 @@ export default function ServidoresPage() {
       ]);
 
       if (error) throw error;
-      fetchDataForService(activeServiceId!);
+      setActiveServiceId(selfServiceId);
+      await fetchDataForService(selfServiceId);
     } catch (err: any) {
       alert("Error al inscribirse: " + err.message);
     } finally {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useOrganization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
+import RestrictedAccess from "@/components/RestrictedAccess";
 
 interface MinistryTeam {
   id: string;
@@ -11,7 +12,7 @@ interface MinistryTeam {
 }
 
 export default function ConfiguracionPage() {
-  const { org, loading: orgLoading } = useOrganization();
+  const { org, userRole, loading: orgLoading } = useOrganization();
 
   const [name, setName] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#4F46E5");
@@ -156,6 +157,13 @@ export default function ConfiguracionPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <p className="text-slate-600 font-medium">Cargando configuración...</p>
       </div>
+    );
+  }
+
+  const isAdmin = userRole === "admin" || userRole === "superadmin";
+  if (!isAdmin || !org) {
+    return (
+      <RestrictedAccess message="La configuración de la iglesia está disponible únicamente para administradores con una iglesia asignada." />
     );
   }
 

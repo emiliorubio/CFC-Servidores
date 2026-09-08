@@ -17,7 +17,7 @@ interface AuthProfile {
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { org, userRole, loading: orgLoading } = useOrganization();
+  const { org, userRole, loading: orgLoading, allOrgs, switchOrganization } = useOrganization();
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
@@ -283,6 +283,22 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                   ⚙️ Configurar Iglesia
                 </Link>
               </>
+            )}
+
+            {userRole === "superadmin" && allOrgs.length > 1 && (
+              <select
+                value={org?.id || ""}
+                onChange={(e) => switchOrganization(e.target.value)}
+                title="Explorar iglesia como superadmin"
+                className="ml-auto shrink-0 bg-slate-950/60 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-white/20 focus:outline-none cursor-pointer"
+              >
+                <option value="">🗂️ Elegir iglesia…</option>
+                {allOrgs.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
             )}
 
           </div>

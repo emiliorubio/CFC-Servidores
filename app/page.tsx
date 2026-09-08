@@ -25,6 +25,23 @@ interface ServiceAssignment {
   team_id: string | null;
 }
 
+function santiagoDateKey(instant: string | Date): string {
+  return new Date(instant).toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
+}
+
+function daysUntil(dateKey: string): number {
+  const today = new Date(santiagoDateKey(new Date()) + "T12:00:00");
+  const target = new Date(dateKey + "T12:00:00");
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function relativeChip(days: number) {
+  if (days === 0) return { text: "Hoy", cls: "bg-emerald-100 text-emerald-800 border-emerald-300" };
+  if (days === 1) return { text: "Mañana", cls: "bg-amber-100 text-amber-800 border-amber-300" };
+  if (days > 1) return { text: `En ${days} días`, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" };
+  return null;
+}
+
 export default function HomePage() {
   const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
   const [schedules, setSchedules] = useState<ServiceSchedule[]>([]);
@@ -85,6 +102,7 @@ export default function HomePage() {
   };
 
   const [reloadKey, setReloadKey] = useState(0);
+  const [vista, setVista] = useState<"proximos" | "todos">("proximos");
 
   // Cargar cultos filtrados por la iglesia activa (se recarga al cambiar de
   // iglesia o al generar/crear nuevos cultos).
@@ -164,6 +182,11 @@ export default function HomePage() {
   const canDeleteCulto =
     userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   const orgName = org?.name || "tu iglesia";
+
+  const schedulesVisibles =
+    vista === "proximos"
+      ? schedules.filter((s) => daysUntil(santiagoDateKey(s.service_date)) >= 0)
+      : schedules;
 
   const shortTeamName = (name: string) => name.split("(")[0].trim();
 
@@ -353,21 +376,54 @@ export default function HomePage() {
 
       {/* Lista de Cultos / Cronograma */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          <span>📅</span> Próximas Fechas
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <span>📅</span> Próximas Fechas
+            <span className="text-xs font-semibold text-slate-400">
+              ({schedulesVisibles.length})
+            </span>
+          </h2>
 
-        {schedules.length === 0 ? (
+          <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1">
+            <button
+              onClick={() => setVista("proximos")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                vista === "proximos" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Próximos
+            </button>
+            <button
+              onClick={() => setVista("todos")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                vista === "todos" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Todos
+            </button>
+          </div>
+        </div>
+
+        {schedulesVisibles.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-sm">
             <div className="text-4xl">⛪</div>
             <h3 className="text-base font-bold text-slate-800">Sin cultos registrados aún</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              No hay reuniones agendadas para <strong>{orgName}</strong>. {canGenerateCultos ? "Haz clic en el botón de arriba para agregar la primera." : "Un pastor o administrador debe agendar las fechas."}
+              {vista === "proximos" && schedules.length > 0 ? (
+                "No hay cultos próximos, pero sí en el historial. Cambia a “Todos” para verlos."
+              ) : (
+                <>
+                  No hay reuniones agendadas para <strong>{orgName}</strong>.{" "}
+                  {canGenerateCultos
+                    ? "Haz clic en el botón de arriba para agregar la primera."
+                    : "Un pastor o administrador debe agendar las fechas."}
+                </>
+              )}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {schedules.map((schedule) => (
+            {schedulesVisibles.map((schedule) => (
               <div
                 key={schedule.id}
                 className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
@@ -386,11 +442,19 @@ export default function HomePage() {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-indigo-600 font-semibold mt-1">
-                    🗓️ {formatearFechaCulto(schedule.service_date)}
+                  <p className="text-xs text-indigo-600 font-semibold mt-1 flex flex-wrap items-center gap-x-2">
+                    <span>🗓️ {formatearFechaCulto(schedule.service_date)}</span>
                     {horaCulto(schedule.service_date) && (
-                      <span className="text-indigo-400"> — ⏰ {horaCulto(schedule.service_date)}</span>
+                      <span className="text-indigo-400">— ⏰ {horaCulto(schedule.service_date)}</span>
                     )}
+                    {(() => {
+                      const chip = relativeChip(daysUntil(santiagoDateKey(schedule.service_date)));
+                      return chip ? (
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${chip.cls}`}>
+                          {chip.text}
+                        </span>
+                      ) : null;
+                    })()}
                   </p>
 
                   {schedule.description && (

@@ -53,6 +53,8 @@ export default function EscuelaDominicalPage() {
   const [lessons, setLessons] = useState<EscuelaLesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchInitialData = useCallback(async () => {
     if (!org?.id) return;
@@ -133,6 +135,7 @@ export default function EscuelaDominicalPage() {
     if (!selectedCulto || !topic.trim() || !organizationId) return;
 
     setSaving(true);
+    setMessage(null);
     let uploadedPdfUrl = "";
 
     if (pdfFile) {
@@ -145,7 +148,7 @@ export default function EscuelaDominicalPage() {
         .upload(filePath, pdfFile);
 
       if (uploadError) {
-        console.error("Error al subir el archivo PDF:", uploadError);
+        setMessage({ type: "error", text: "El PDF se guardará pero no se pudo subir: " + uploadError.message });
       } else if (uploadData) {
         const { data: publicUrlData } = supabase.storage
           .from("materials")
@@ -170,12 +173,27 @@ export default function EscuelaDominicalPage() {
       setPdfFile(null);
       const fileInput = document.getElementById("pdf-input") as HTMLInputElement;
       if (fileInput) fileInput.value = "";
+      setMessage({ type: "success", text: "Lección guardada correctamente." });
       fetchInitialData();
     } else {
-      console.error("Error al guardar lección:", error);
+      setMessage({ type: "error", text: "No se pudo guardar la lección: " + error.message });
     }
 
     setSaving(false);
+  };
+
+  const handleDeleteLesson = async (lesson: EscuelaLesson) => {
+    if (!window.confirm(`¿Eliminar la lección "${lesson.topic}" del grupo "${lesson.group_name}"?`)) return;
+    setDeletingId(lesson.id);
+    setMessage(null);
+    const { error } = await supabase.from("sunday_school_lessons").delete().eq("id", lesson.id);
+    setDeletingId(null);
+    if (error) {
+      setMessage({ type: "error", text: "No se pudo eliminar la lección: " + error.message });
+      return;
+    }
+    setMessage({ type: "success", text: "Lección eliminada." });
+    await fetchInitialData();
   };
 
   const isLiderOrAdmin =
@@ -208,6 +226,18 @@ export default function EscuelaDominicalPage() {
             Gestiona los temas, lecciones y materiales en PDF para las distintas clases del domingo.
           </p>
         </div>
+
+        {message && (
+          <div
+            className={`p-4 rounded-2xl text-sm font-semibold ${
+              message.type === "success"
+                ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                : "bg-rose-50 border border-rose-200 text-rose-800"
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
 
         <div className="grid gap-6 md:grid-cols-3">
           
@@ -357,16 +387,26 @@ export default function EscuelaDominicalPage() {
                             </p>
                           </div>
 
-                          {lesson.material_url && (
-                            <a
-                              href={lesson.material_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1 shadow-sm shrink-0"
+                          <div className="flex items-center gap-2 shrink-0">
+                            {lesson.material_url && (
+                              <a
+                                href={lesson.material_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1 shadow-sm"
+                              >
+                                📄 Abrir PDF
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleDeleteLesson(lesson)}
+                              disabled={deletingId === lesson.id}
+                              title="Eliminar lección"
+                              className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0"
                             >
-                              📄 Abrir PDF
-                            </a>
-                          )}
+                              {deletingId === lesson.id ? "..." : "🗑️"}
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>

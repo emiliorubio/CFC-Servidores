@@ -20,6 +20,15 @@ as $$
         p.role = 'superadmin'
         or (p.organization_id = target and lower(p.role) in ('admin', 'pastor', 'tesorero'))
       )
+  ) or exists (
+    -- Cuentas que viven solo en el directorio (church_members), sin fila en profiles.
+    select 1 from public.church_members cm
+    where cm.organization_id = target
+      and cm.role is not null and lower(cm.role) in ('admin', 'pastor', 'tesorero')
+      and (
+        cm.user_id = auth.uid()
+        or cm.email = (select email from auth.users where id = auth.uid())
+      )
   );
 $$;
 

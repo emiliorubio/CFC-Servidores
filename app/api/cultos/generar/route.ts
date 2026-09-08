@@ -38,14 +38,16 @@ function parseEnSantiago(instant: number): {
  * Conversión de una hora LOCAL de Santiago a UTC. Como Chile usa horario de
  * verano (UTC-4/UTC-3), se calcula con Intl para que cada culto quede en el
  * instante correcto sin importar el huso horario del servidor (Vercel = UTC).
+ *
+ * Método: se parte del supuesto "UTC wall = local wall" y se corrige con el
+ * desfase real de Santiago en ese instante: instant = guess - deltaMin*60000.
  */
 function santiagoLocalToUtc(y: number, m: number, d: number, hh: number, mm: number): number {
-  const primera = Date.UTC(y, m, d, hh, mm);
-  const p = parseEnSantiago(primera);
-  if (p.y === y && p.m === m && p.d === d && p.hh === hh && p.mm === mm) {
-    return primera;
-  }
-  return Date.UTC(p.y, p.m, p.d, p.hh, p.mm);
+  const guess = Date.UTC(y, m, d, hh, mm);
+  const p = parseEnSantiago(guess);
+  const targetMin = y * 525600 + m * 43800 + d * 1440 + hh * 60 + mm;
+  const santiagoMin = p.y * 525600 + p.m * 43800 + p.d * 1440 + p.hh * 60 + p.mm;
+  return guess - (santiagoMin - targetMin) * 60000;
 }
 
 export async function POST(request: NextRequest) {

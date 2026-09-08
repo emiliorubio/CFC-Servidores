@@ -4,6 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const secret = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+function normalizeSlug(slug: string) {
+  return slug.toLowerCase().replace(/-/g, "");
+}
+
 function slugFromRequest(request: NextRequest, localSlug?: unknown) {
   const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "")
     .split(":")[0]
@@ -33,13 +37,13 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createClient(url, secret, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { data: organization, error: organizationError } = await supabase
-    .from("organizations")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
+  const { data: allOrganizations, error: organizationsError } = await supabase.from("organizations").select("id, slug");
+  if (organizationsError) {
+    return NextResponse.json({ error: "No pudimos verificar la iglesia asociada a este enlace." }, { status: 500 });
+  }
+  const organization = (allOrganizations || []).find((item) => normalizeSlug(item.slug) === normalizeSlug(slug));
 
-  if (organizationError || !organization) {
+  if (!organization) {
     return NextResponse.json({ error: "No encontramos una iglesia asociada a este enlace." }, { status: 404 });
   }
 

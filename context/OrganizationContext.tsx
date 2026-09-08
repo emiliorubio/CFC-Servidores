@@ -32,6 +32,10 @@ interface OrgContextType {
   switchOrganization: (orgId: string) => void;
 }
 
+function normalizeSlug(slug: string) {
+  return slug.toLowerCase().replace(/-/g, "");
+}
+
 function organizationSlugFromLocation() {
   if (typeof window === "undefined") return null;
 
@@ -77,7 +81,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
       const hostSlug = organizationSlugFromLocation();
       const organizationFromHost = hostSlug
-        ? availableOrgs.find((organization) => organization.slug.toLowerCase() === hostSlug.toLowerCase()) || null
+        ? availableOrgs.find((organization) => normalizeSlug(organization.slug) === normalizeSlug(hostSlug)) || null
         : null;
 
       if (!session?.user) {

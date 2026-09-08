@@ -13,7 +13,7 @@ function slugFromRequest(request: NextRequest, localSlug?: unknown) {
     .split(":")[0]
     .toLowerCase();
 
-  const fallbackSlug = typeof localSlug === "string" ? localSlug.toLowerCase() : null;
+  const fallbackSlug = typeof localSlug === "string" ? localSlug.toLowerCase() : "";
 
   if (host === "localhost" || host === "127.0.0.1") {
     return fallbackSlug;
@@ -43,8 +43,19 @@ export async function POST(request: NextRequest) {
       ? body.requestedRole.toLowerCase()
       : "servidor";
 
-  if (!fullName || !email || !password || password.length < 8 || !slug) {
-    return NextResponse.json({ error: "Completa nombre, correo, contraseña y abre el enlace de una iglesia válida." }, { status: 400 });
+  const problemas: string[] = [];
+  if (!fullName) problemas.push("Nombre completo");
+  if (!email) problemas.push("Correo electrónico");
+  if (!password) problemas.push("Contraseña");
+  else if (password.length < 8) problemas.push("Contraseña (mínimo 8 caracteres)");
+  if (!slug) problemas.push("la iglesia asociada a este enlace");
+
+  if (problemas.length > 0) {
+    const detalle = problemas.map((p) => `"${p}"`).join(", ");
+    return NextResponse.json(
+      { error: `Faltan datos o son inválidos: revisa ${detalle}.` },
+      { status: 400 }
+    );
   }
 
   const supabase = createClient(url, secret, { auth: { autoRefreshToken: false, persistSession: false } });

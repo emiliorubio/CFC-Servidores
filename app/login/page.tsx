@@ -19,11 +19,12 @@ export default function AuthPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  const signupOrgs = allOrgs.filter((o) => o.signup_visible !== false);
+
+  // En el dominio raíz (sin subdominio) cae en la primera iglesia habilitada.
   const registerOrg = selectedOrgId
     ? allOrgs.find((o) => o.id === selectedOrgId) || null
-    : org || null;
-
-  const signupOrgs = allOrgs.filter((o) => o.signup_visible !== false);
+    : org || signupOrgs[0] || null;
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,11 +197,15 @@ export default function AuthPage() {
             <input
               type="password"
               required
+              minLength={8}
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
+            {isRegister && (
+              <p className="text-[11px] text-slate-500 mt-1">Mínimo 8 caracteres.</p>
+            )}
           </div>
 
           <button

@@ -120,9 +120,27 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
         organization_id: userOrgId || null,
       });
 
+      // Si el usuario aún no tiene iglesia asignada, la del subdominio por el
+      // que entró (ej. cfcpuentealto.miiglesia.cl) se convierte en la suya.
+      let finalUserOrgId = userOrgId;
+      if (!finalUserOrgId && organizationFromHost && currentRole !== "superadmin") {
+        finalUserOrgId = organizationFromHost.id;
+        await supabase
+          .from("profiles")
+          .update({ organization_id: organizationFromHost.id })
+          .eq("id", session.user.id);
+        setUserProfile({
+          id: session.user.id,
+          full_name:
+            profile?.full_name || member?.full_name || session.user.user_metadata?.full_name || null,
+          role: currentRole,
+          organization_id: organizationFromHost.id,
+        });
+      }
+
       // Si es SuperAdmin, le permitimos usar el selector de iglesia guardado en localStorage
       const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("selected_org_id") : null;
-      const targetOrgId = (currentRole === "superadmin" && savedOrgId) ? savedOrgId : userOrgId;
+      const targetOrgId = (currentRole === "superadmin" && savedOrgId) ? savedOrgId : finalUserOrgId;
 
       if (targetOrgId) {
         const found = availableOrgs.find((o) => o.id === targetOrgId);

@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No encontramos una iglesia asociada a este enlace." }, { status: 404 });
   }
 
-  const { error } = await supabase.auth.admin.createUser({
+  const { data: createdUser, error } = await supabase.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
@@ -81,6 +81,33 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  // Garantiza que el perfil quede asignado a la iglesia elegida aunque el
+  // trigger de creación no haya aplicado el app_metadata.
+  if (createdUser?.user) {
+    const createdId = createdUser.user.id;
+    const { data: profileExistente } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", createdId)
+      .maybeSingle();
+
+    if (profileExistente) {
+      await supabase
+        .from("profiles")
+        .update({ organization_id: organization.id, email })
+        .eq("id", createdId);
+    } else {
+      await supabase.from("profiles").insert({
+        id: createdId,
+        full_name: fullName,
+        email,
+        role: "servidor",
+        requested_role: requestedRole === "servidor" ? null : requestedRole,
+        organization_id: organization.id,
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

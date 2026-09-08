@@ -4,16 +4,16 @@
 -- (por eso no coincidían con Escuela Dominical), y en ambas iglesias la hora
 -- quedó corrida 3-4 horas.
 --
--- Se eliminan únicamente los cultos automáticos (título "Culto General") de
--- ambas iglesias. Después de ejecutar esto, regenerar desde el Inicio con
--- "⚡ Gén. Cultos 1 mes/2 meses" ya los crea con la fecha y hora correctas.
--- Los cultos creados manualmente (otros títulos) no se tocan.
-
-delete from public.service_schedules
-where title = 'Culto General'
-  and organization_id in (
-    select id from public.organizations where slug in ('cfcvida', 'cfcpuentealto')
-  );
+-- OJO (2026-09): el generador ya crea los cultos con fecha/hora correctas, así
+-- que este DELETE quedó DESACTIVADO para que re-ejecutar esta migración no
+-- borre los cultos en producción. Se regenera desde el Inicio con
+-- "⚡ Gén. Cultos 1 mes/2 meses".
+--
+-- delete from public.service_schedules
+-- where title = 'Culto General'
+--   and organization_id in (
+--     select id from public.organizations where slug in ('cfcvida', 'cfcpuentealto')
+--   );
 
 -- CFC Puente Alto guardó el texto "NULL" (literal) como logo_url; sin esto la
 -- app intentaría cargar una URL inválida. Ambas iglesias usan el logo por

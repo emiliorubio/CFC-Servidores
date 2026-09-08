@@ -1,8 +1,9 @@
 -- 20260911: Corrige horarios de cultos generados y acceso a finanzas.
 -- 1) Vuelve a actualizar can_manage_finanzas para que también acepte cuentas
 --    del directorio (church_members) sin fila en profiles.
--- 2) Borra los cultos automáticos ("Culto General") de ambas iglesias para
---    regenerarlos con la hora correcta desde el Inicio. Idempotente.
+-- 2) El antiguo borrado de cultos automáticos ('Culto General') quedó
+--    DESACTIVADO: re-ejecutarlo borraba los cultos de producción.
+--    Se regenera desde el Inicio con "⚡ Gén. Cultos 1 mes/2 meses".
 
 create or replace function public.can_manage_finanzas(target uuid)
 returns boolean
@@ -29,8 +30,8 @@ as $$
   );
 $$;
 
-delete from public.service_schedules
-where title = 'Culto General'
-  and organization_id in (
-    select id from public.organizations where slug in ('cfcvida', 'cfcpuentealto')
-  );
+-- delete from public.service_schedules
+-- where title = 'Culto General'
+--   and organization_id in (
+--     select id from public.organizations where slug in ('cfcvida', 'cfcpuentealto')
+--   );

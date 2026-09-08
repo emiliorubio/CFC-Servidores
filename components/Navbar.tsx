@@ -57,6 +57,10 @@ export default function Navbar() {
             Servidores
           </Link>
 
+          <Link href="/consolidacion" className="hover:text-indigo-300 transition-colors">
+            Consolidación
+          </Link>
+
           {/* Módulos visibles solo para Líderes o Admins */}
           {isLiderOrAdmin && (
             <>

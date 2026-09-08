@@ -12,6 +12,9 @@ export interface Organization {
   secondary_color: string;
   plan: string;
   active_modules: Record<string, boolean>;
+  address?: string | null;
+  service_times?: string | null;
+  contact_phone?: string | null;
 }
 
 export type UserRole = "superadmin" | "admin" | "lider" | "servidor";

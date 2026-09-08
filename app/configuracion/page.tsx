@@ -22,6 +22,9 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
   const [primaryColor, setPrimaryColor] = useState(org.primary_color || "#4F46E5");
   const [secondaryColor, setSecondaryColor] = useState(org.secondary_color || "#0F172A");
   const [logoUrl, setLogoUrl] = useState(org.logo_url || "");
+  const [address, setAddress] = useState(org.address || "");
+  const [serviceTimes, setServiceTimes] = useState(org.service_times || "");
+  const [contactPhone, setContactPhone] = useState(org.contact_phone || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -130,6 +133,9 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
           primary_color: primaryColor,
           secondary_color: secondaryColor,
           logo_url: logoUrl,
+          address: address.trim() || null,
+          service_times: serviceTimes.trim() || null,
+          contact_phone: contactPhone.trim() || null,
         })
         .eq("id", org.id);
 
@@ -208,6 +214,50 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
               />
             </div>
             {uploading && <p className="text-xs text-indigo-600 font-medium">Subiendo imagen...</p>}
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Datos de contacto para la bienvenida por WhatsApp */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">Datos para la bienvenida por WhatsApp</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Se usan en el mensaje que el equipo de consolidación envía a los nuevos.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-slate-700">Dirección</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Ej.: Av. Los Pajaritos 1234, Puente Alto"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-slate-700">Horarios de culto</label>
+                <input
+                  type="text"
+                  value={serviceTimes}
+                  onChange={(e) => setServiceTimes(e.target.value)}
+                  placeholder="Ej.: Dom 10:30 y 18:00 hrs"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-slate-700">WhatsApp de contacto</label>
+                <input
+                  type="text"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="Ej.: +56 9 5555 5555"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800"
+                />
+              </div>
+            </div>
           </div>
 
           <hr className="border-slate-100" />

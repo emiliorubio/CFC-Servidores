@@ -11,6 +11,7 @@ interface MemberRow {
   full_name: string;
   role?: string | null;
   email?: string | null;
+  phone?: string | null;
   team_id?: string | null;
   user_id?: string | null;
   source: "member" | "profile";
@@ -41,6 +42,22 @@ function roleLabel(role?: string | null) {
   return "Servidor";
 }
 
+function whatsappDigits(phone?: string | null) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 9) return null;
+  if (digits.startsWith("56")) return digits;
+  if (digits.startsWith("0")) return "56" + digits.slice(1);
+  return "56" + digits;
+}
+
+function whatsappLink(phone?: string | null, name?: string) {
+  const digits = whatsappDigits(phone);
+  if (!digits) return null;
+  const text = name ? `Hola ${name}! 👋` : "Hola! 👋";
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
 export default function DirectorioPage() {
   const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
   const canManage = userRole === "admin" || userRole === "superadmin" || userRole === "lider" || userRole === "pastor" || userRole === "coordinador";
@@ -57,6 +74,7 @@ export default function DirectorioPage() {
   // Alta de miembro
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [teamId, setTeamId] = useState("");
 
   const loadAll = useCallback(async () => {
@@ -64,7 +82,7 @@ export default function DirectorioPage() {
 
     const { data: membersData } = await supabase
       .from("church_members")
-      .select("id, full_name, role, email, team_id, user_id")
+      .select("id, full_name, role, email, phone, team_id, user_id")
       .eq("organization_id", org.id)
       .order("full_name", { ascending: true });
 
@@ -89,6 +107,7 @@ export default function DirectorioPage() {
         full_name: m.full_name,
         role: m.role,
         email: m.email,
+        phone: m.phone,
         team_id: m.team_id,
         user_id: m.user_id,
         source: "member",
@@ -142,6 +161,7 @@ export default function DirectorioPage() {
       full_name: name.trim(),
       team_id: teamId || null,
       email: email.trim() || null,
+      phone: phone.trim() || null,
       role: null,
     });
     if (error) {
@@ -149,6 +169,7 @@ export default function DirectorioPage() {
     } else {
       setName("");
       setEmail("");
+      setPhone("");
       await loadAll();
     }
     setSaving(false);
@@ -264,6 +285,16 @@ export default function DirectorioPage() {
                 {saving ? "..." : "Agregar"}
               </button>
             </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">WhatsApp (opcional)</label>
+              <input
+                type="tel"
+                placeholder="Ej: +56 9 1234 5678"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
         </form>
       )}
@@ -326,6 +357,11 @@ export default function DirectorioPage() {
                       ) : (
                         <p className="text-[11px] text-slate-400">{m.source === "profile" ? "Cuenta de usuario" : "Miembro de la iglesia"}</p>
                       )}
+                      {m.phone ? (
+                        <p className="text-[11px] text-slate-500 truncate">📱 {m.phone}</p>
+                      ) : m.source === "member" ? (
+                        <p className="text-[11px] text-slate-400">WhatsApp: —</p>
+                      ) : null}
                     </div>
                     <span
                       className={`text-[10px] font-bold px-2 py-1 rounded-full border shrink-0 ${
@@ -355,6 +391,18 @@ export default function DirectorioPage() {
                       <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-xl">
                         {team?.name || "Sin área asignada"}
                       </span>
+                    )}
+
+                    {whatsappLink(m.phone) && (
+                      <a
+                        href={whatsappLink(m.phone, m.full_name)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Escribir por WhatsApp"
+                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 shrink-0 border border-emerald-200 bg-emerald-50 rounded-lg px-2 py-1 transition-colors"
+                      >
+                        WhatsApp
+                      </a>
                     )}
 
                     {canManage && m.source === "member" && (

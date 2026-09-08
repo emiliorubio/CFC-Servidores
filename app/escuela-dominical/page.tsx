@@ -41,6 +41,13 @@ interface EscuelaLesson {
   material_url?: string | null;
 }
 
+interface AttendanceRow {
+  id: string;
+  lesson_id: string;
+  full_name: string;
+  present: boolean;
+}
+
 export default function EscuelaDominicalPage() {
   const { org, userRole, loading: orgLoading } = useOrganization();
   const [cultos, setCultos] = useState<EscuelaCulto[]>([]);
@@ -55,6 +62,9 @@ export default function EscuelaDominicalPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
+  const [attendanceInput, setAttendanceInput] = useState<Record<string, string>>({});
+  const [attendanceSaving, setAttendanceSaving] = useState<Record<string, boolean>>({});
 
   const fetchInitialData = useCallback(async () => {
     if (!org?.id) return;
@@ -77,6 +87,10 @@ export default function EscuelaDominicalPage() {
     const { data: lessonData } = await supabase
       .from("sunday_school_lessons")
       .select("*")
+      .eq("organization_id", org.id);
+    const { data: attendanceData } = await supabase
+      .from("sunday_school_attendance")
+      .select("id, lesson_id, full_name, present")
       .eq("organization_id", org.id);
 
     if (serviceData && serviceData.length > 0) {
@@ -101,6 +115,7 @@ export default function EscuelaDominicalPage() {
     }
 
     if (lessonData) setLessons(lessonData as EscuelaLesson[]);
+    if (attendanceData) setAttendance(attendanceData as AttendanceRow[]);
 
     setLoading(false);
   }, [org]);
@@ -194,6 +209,51 @@ export default function EscuelaDominicalPage() {
     }
     setMessage({ type: "success", text: "Lección eliminada." });
     await fetchInitialData();
+  };
+
+  const reloadAttendance = async () => {
+    if (!org?.id) return;
+    const { data } = await supabase
+      .from("sunday_school_attendance")
+      .select("id, lesson_id, full_name, present")
+      .eq("organization_id", org.id);
+    if (data) setAttendance(data as AttendanceRow[]);
+  };
+
+  const handleAddAttendance = async (lesson: EscuelaLesson) => {
+    const name = (attendanceInput[lesson.id] || "").trim();
+    if (!name || !org?.id) return;
+    setAttendanceSaving((prev) => ({ ...prev, [lesson.id]: true }));
+    const { error } = await supabase.from("sunday_school_attendance").insert({
+      lesson_id: lesson.id,
+      organization_id: org.id,
+      full_name: name,
+    });
+    setAttendanceSaving((prev) => ({ ...prev, [lesson.id]: false }));
+    if (error) {
+      setMessage({ type: "error", text: "No se pudo registrar la asistencia: " + error.message });
+      return;
+    }
+    setAttendanceInput((prev) => ({ ...prev, [lesson.id]: "" }));
+    await reloadAttendance();
+  };
+
+  const handleTogglePresent = async (row: AttendanceRow) => {
+    const { error } = await supabase
+      .from("sunday_school_attendance")
+      .update({ present: !row.present })
+      .eq("id", row.id);
+    if (!error) {
+      setAttendance((prev) => prev.map((a) => (a.id === row.id ? { ...a, present: !row.present } : a)));
+    }
+  };
+
+  const handleRemoveAttendance = async (row: AttendanceRow) => {
+    if (!window.confirm(`¿Quitar a "${row.full_name}" de la asistencia?`)) return;
+    const { error } = await supabase.from("sunday_school_attendance").delete().eq("id", row.id);
+    if (!error) {
+      setAttendance((prev) => prev.filter((a) => a.id !== row.id));
+    }
   };
 
   const isLiderOrAdmin =
@@ -376,36 +436,102 @@ export default function EscuelaDominicalPage() {
                       {cultLessons.map((lesson) => (
                         <div
                           key={lesson.id}
-                          className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex justify-between items-center"
+                          className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex flex-col gap-3"
                         >
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-amber-800 uppercase bg-amber-100 px-2 py-0.5 rounded-md">
-                              {lesson.group_name}
-                            </span>
-                            <p className="text-xs font-bold text-slate-800">
-                              📖 Tema: {lesson.topic}
-                            </p>
+                          <div className="flex justify-between items-center gap-3">
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-bold text-amber-800 uppercase bg-amber-100 px-2 py-0.5 rounded-md">
+                                {lesson.group_name}
+                              </span>
+                              <p className="text-xs font-bold text-slate-800">
+                                📖 Tema: {lesson.topic}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {lesson.material_url && (
+                                <a
+                                  href={lesson.material_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1 shadow-sm"
+                                >
+                                  📄 Abrir PDF
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleDeleteLesson(lesson)}
+                                disabled={deletingId === lesson.id}
+                                title="Eliminar lección"
+                                className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0"
+                              >
+                                {deletingId === lesson.id ? "..." : "🗑️"}
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            {lesson.material_url && (
-                              <a
-                                href={lesson.material_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1 shadow-sm"
+                          <div className="pt-2.5 border-t border-slate-200">
+                            <p className="text-[11px] font-bold text-slate-600 mb-2">
+                              👧 Asistencia ({attendance.filter((a) => a.lesson_id === lesson.id).length})
+                            </p>
+                            <div className="flex gap-2 mb-2">
+                              <input
+                                value={attendanceInput[lesson.id] || ""}
+                                onChange={(e) => setAttendanceInput((prev) => ({ ...prev, [lesson.id]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleAddAttendance(lesson);
+                                  }
+                                }}
+                                placeholder="Nombre del niño/niña"
+                                className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                              />
+                              <button
+                                onClick={() => handleAddAttendance(lesson)}
+                                disabled={attendanceSaving[lesson.id] || !(attendanceInput[lesson.id] || "").trim()}
+                                className="bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-colors shrink-0"
                               >
-                                📄 Abrir PDF
-                              </a>
-                            )}
-                            <button
-                              onClick={() => handleDeleteLesson(lesson)}
-                              disabled={deletingId === lesson.id}
-                              title="Eliminar lección"
-                              className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0"
-                            >
-                              {deletingId === lesson.id ? "..." : "🗑️"}
-                            </button>
+                                {attendanceSaving[lesson.id] ? "..." : "+ Añadir"}
+                              </button>
+                            </div>
+                            {(() => {
+                              const rows = attendance.filter((a) => a.lesson_id === lesson.id);
+                              return rows.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {rows.map((row) => (
+                                    <span
+                                      key={row.id}
+                                      className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-full border ${
+                                        row.present
+                                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                          : "bg-slate-100 border-slate-200 text-slate-500 line-through"
+                                      }`}
+                                    >
+                                      {row.full_name}
+                                      <button
+                                        onClick={() => handleTogglePresent(row)}
+                                        title={row.present ? "Marcar ausente" : "Marcar presente"}
+                                        className={row.present ? "text-emerald-600" : "text-slate-400"}
+                                      >
+                                        {row.present ? "✓" : "●"}
+                                      </button>
+                                      <button
+                                        onClick={() => handleRemoveAttendance(row)}
+                                        title="Quitar"
+                                        className="text-slate-300 hover:text-red-500"
+                                      >
+                                        ✕
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-slate-400 italic">
+                                  Aún no hay asistencia registrada para esta clase.
+                                </p>
+                              );
+                            })()}
                           </div>
                         </div>
                       ))}

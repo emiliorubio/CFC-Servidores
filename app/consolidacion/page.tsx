@@ -14,8 +14,30 @@ interface ConsolidationRecord {
   email: string | null;
   event_name: string;
   note: string | null;
+  person_id?: string | null;
   created_at: string;
 }
+
+interface Person {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  status: "nuevo" | "reiterado" | "integrado";
+  created_at: string;
+}
+
+const STATUS_LABELS: Record<Person["status"], string> = {
+  nuevo: "Nuevo",
+  reiterado: "Reiterado",
+  integrado: "Integrado",
+};
+
+const STATUS_COLORS: Record<Person["status"], string> = {
+  nuevo: "bg-sky-100 text-sky-700 border-sky-300",
+  reiterado: "bg-amber-100 text-amber-800 border-amber-300",
+  integrado: "bg-emerald-100 text-emerald-700 border-emerald-300",
+};
 
 const EVENT_OPTIONS = ["Bautizos", "Culto General", "Visita", "Consolidación", "Otro"] as const;
 
@@ -38,6 +60,24 @@ function buildWelcomeMessage(org: Organization, name: string) {
   return lines.join("\n");
 }
 
+function followUpMessage(org: Organization, person: Person) {
+  const lines =
+    person.status === "integrado"
+      ? [
+          `Hola ${person.full_name}! 👋`,
+          `Gracias por estar en ${org.name}.`,
+          "Queremos que esta iglesia sea tu casa.",
+          org.service_times ? `🕐 Te esperamos: ${org.service_times}` : "¡Te esperamos este domingo!",
+        ]
+      : [
+          `Hola ${person.full_name}! 👋`,
+          `¡Qué alegría verte de nuevo en ${org.name}!`,
+          "Queremos acompañarte en este proceso.",
+          org.service_times ? `🕐 Te esperamos: ${org.service_times}` : "¡Te esperamos este domingo!",
+        ];
+  return lines.filter(Boolean).join("\n");
+}
+
 function whatsappLink(org: Organization, name: string, phone: string) {
   const number = normalizePhone(phone);
   const text = buildWelcomeMessage(org, name);
@@ -50,8 +90,14 @@ function formatFullDate(raw: string) {
 }
 
 function ConsolidationForm({ org }: { org: Organization }) {
-  const { userProfile } = useOrganization();
+  const { userProfile, userRole } = useOrganization();
   const isMember = Boolean(userProfile);
+  const isLeader =
+    userRole === "admin" ||
+    userRole === "superadmin" ||
+    userRole === "lider" ||
+    userRole === "pastor" ||
+    userRole === "coordinador";
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -71,6 +117,13 @@ function ConsolidationForm({ org }: { org: Organization }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [filterEvent, setFilterEvent] = useState("");
+
+  // Seguimiento por persona
+  const [people, setPeople] = useState<Person[]>([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"todos" | Person["status"]>("todos");
+  const [nameSearch, setNameSearch] = useState("");
+  const [savingStatus, setSavingStatus] = useState<string | null>(null);
 
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -105,7 +158,7 @@ function ConsolidationForm({ org }: { org: Organization }) {
     setHistoryLoading(true);
     const { data, error } = await supabase
       .from("consolidations")
-      .select("id, full_name, phone, email, event_name, note, created_at")
+      .select("id, full_name, phone, email, event_name, note, person_id, created_at")
       .eq("organization_id", org.id)
       .order("created_at", { ascending: false });
 
@@ -113,6 +166,16 @@ function ConsolidationForm({ org }: { org: Organization }) {
       setAllRecords((data || []) as ConsolidationRecord[]);
     }
     setHistoryLoading(false);
+
+    const { data: peopleData, error: peopleError } = await supabase
+      .from("consolidation_people")
+      .select("id, full_name, phone, email, status, created_at")
+      .eq("organization_id", org.id)
+      .order("created_at", { ascending: false });
+    if (!peopleError) {
+      setPeople((peopleData || []) as Person[]);
+    }
+    setPeopleLoading(false);
   }, [org.id]);
 
   useEffect(() => {
@@ -146,20 +209,77 @@ function ConsolidationForm({ org }: { org: Organization }) {
 
     setSaving(true);
     setError(null);
-    const { error } = await supabase.from("consolidations").insert({
-      organization_id: org.id,
-      full_name: fullName.trim(),
-      phone: normalizePhone(phone),
-      email: email.trim() || null,
-      event_name: eventName.trim() || "Bautizos",
-      note: note.trim() || null,
-      created_by: userProfile?.id || null,
-    });
+    const {
+      data: inserted,
+      error,
+    } = await supabase
+      .from("consolidations")
+      .insert({
+        organization_id: org.id,
+        full_name: fullName.trim(),
+        phone: normalizePhone(phone),
+        email: email.trim() || null,
+        event_name: eventName.trim() || "Bautizos",
+        note: note.trim() || null,
+        created_by: userProfile?.id || null,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       setError("No se pudo registrar: " + error.message);
       setSaving(false);
       return;
+    }
+
+    // Vincular con su "persona" de seguimiento (por teléfono o nombre).
+    const normalizedPhone = normalizePhone(phone);
+    let personId: string | null = null;
+    if (normalizedPhone) {
+      const { data: byPhone } = await supabase
+        .from("consolidation_people")
+        .select("id")
+        .eq("organization_id", org.id)
+        .eq("phone", normalizedPhone)
+        .maybeSingle();
+      personId = byPhone?.id || null;
+    }
+    if (!personId && !normalizedPhone) {
+      const { data: byName } = await supabase
+        .from("consolidation_people")
+        .select("id")
+        .eq("organization_id", org.id)
+        .eq("full_name", fullName.trim())
+        .is("phone", null)
+        .maybeSingle();
+      personId = byName?.id || null;
+    }
+    if (!personId) {
+      const { data: newPerson, error: personError } = await supabase
+        .from("consolidation_people")
+        .insert({
+          organization_id: org.id,
+          full_name: fullName.trim(),
+          phone: normalizedPhone || null,
+          email: email.trim() || null,
+          status: "nuevo",
+        })
+        .select("id")
+        .maybeSingle();
+      if (!personError) personId = newPerson?.id || null;
+    }
+    if (personId) {
+      await supabase.from("consolidations").update({ person_id: personId }).eq("id", inserted.id);
+      const { count } = await supabase
+        .from("consolidations")
+        .select("id", { count: "exact", head: true })
+        .eq("person_id", personId);
+      if ((count || 0) >= 2) {
+        await supabase
+          .from("consolidation_people")
+          .update({ status: "reiterado" })
+          .eq("id", personId);
+      }
     }
 
     setSavedContact({ name: fullName.trim(), phone: phone });
@@ -169,6 +289,22 @@ function ConsolidationForm({ org }: { org: Organization }) {
     setNote("");
     setSaving(false);
     await loadHistory();
+  };
+
+  const updatePersonStatus = async (person: Person, status: Person["status"]) => {
+    if (!org?.id) return;
+    setSavingStatus(person.id);
+    const { error } = await supabase
+      .from("consolidation_people")
+      .update({ status })
+      .eq("id", person.id)
+      .eq("organization_id", org.id);
+    setSavingStatus(null);
+    if (!error) {
+      setPeople((prev) => prev.map((p) => (p.id === person.id ? { ...p, status } : p)));
+    } else {
+      window.alert("No se pudo actualizar el estado: " + error.message);
+    }
   };
 
   const handleExportCsv = () => {
@@ -333,6 +469,145 @@ function ConsolidationForm({ org }: { org: Organization }) {
               Registrar a otro nuevo →
             </button>
           </div>
+        )}
+
+        {/* Seguimiento por persona (visible para miembros con sesión) */}
+        {isMember && (
+          <section className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">🗂️ Seguimiento de Contactos</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Cada persona tiene un estado: <b>Nuevo</b> → <b>Reiterado</b> → <b>Integrado</b>. Cuando
+                  alguien vuelve, pasa automáticamente a Reiterado.
+                </p>
+              </div>
+            </div>
+
+            {/* Resumen por estado */}
+            <div className="grid grid-cols-3 gap-3">
+              {(["nuevo", "reiterado", "integrado"] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter((prev) => (prev === status ? "todos" : status))}
+                  className={`rounded-2xl border p-4 text-center transition-colors ${
+                    statusFilter === status
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  <p className="text-xl font-extrabold">{people.filter((p) => p.status === status).length}</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider mt-0.5">{STATUS_LABELS[status]}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* Buscador */}
+            <div>
+              <input
+                type="text"
+                value={nameSearch}
+                onChange={(e) => setNameSearch(e.target.value)}
+                placeholder="🔎 Buscar por nombre..."
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {peopleLoading ? (
+              <p className="text-xs text-slate-400 py-2">Cargando seguimiento...</p>
+            ) : people.length === 0 ? (
+              <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 p-8 text-center">
+                <p className="text-3xl mb-2">🕊️</p>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Aún no hay contactos en seguimiento. Cada vez que registres a alguien desde el
+                  formulario de arriba, aparecerá aquí.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {people
+                  .filter((p) => {
+                    const matchesSearch = p.full_name.toLowerCase().includes(nameSearch.toLowerCase());
+                    const matchesStatus = statusFilter === "todos" || p.status === statusFilter;
+                    return matchesSearch && matchesStatus;
+                  })
+                  .map((person) => {
+                    const visits = allRecords.filter(
+                      (r) =>
+                        r.person_id === person.id ||
+                        (r.phone && person.phone && r.phone === person.phone)
+                    );
+                    const lastVisit = visits.reduce(
+                      (latest, r) => (r.created_at > latest ? r.created_at : latest),
+                      ""
+                    );
+                    const initials = person.full_name
+                      .split(" ")
+                      .slice(0, 2)
+                      .map((w) => w.charAt(0).toUpperCase())
+                      .join("");
+                    return (
+                      <div
+                        key={person.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-extrabold text-sm shrink-0">
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{person.full_name}</p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {person.phone || "Sin WhatsApp"} · {visits.length} visita(s)
+                              {lastVisit
+                                ? ` · última ${new Date(lastVisit).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}`
+                                : ""}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${STATUS_COLORS[person.status]}`}
+                          >
+                            {STATUS_LABELS[person.status]}
+                          </span>
+
+                          {person.phone && normalizePhone(person.phone).length >= 11 && (
+                            <a
+                              href={`https://wa.me/${normalizePhone(person.phone)}?text=${encodeURIComponent(followUpMessage(org, person))}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Enviar mensaje de seguimiento"
+                              className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1 rounded-xl transition-colors"
+                            >
+                              📱 Seguimiento
+                            </a>
+                          )}
+
+                          {isLeader && person.status !== "integrado" && (
+                            <button
+                              onClick={() =>
+                                updatePersonStatus(person, person.status === "nuevo" ? "reiterado" : "integrado")
+                              }
+                              disabled={savingStatus === person.id}
+                              className="text-[10px] font-bold bg-slate-900 hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 text-white px-2.5 py-1 rounded-xl transition-colors"
+                            >
+                              {savingStatus === person.id
+                                ? "..."
+                                : person.status === "nuevo"
+                                  ? "→ Reiterado"
+                                  : "→ Integrado"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </section>
         )}
 
         {/* Historial (visible para miembros con sesión) */}

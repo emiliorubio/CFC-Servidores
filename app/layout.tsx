@@ -17,7 +17,7 @@ interface AuthProfile {
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { org, userRole, loading: orgLoading, allOrgs, switchOrganization } = useOrganization();
+  const { org, userRole, loading: orgLoading, allOrgs, switchOrganization, canSeeAdoracion, canSeeEscuela } = useOrganization();
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
@@ -97,7 +97,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
   const displayName = profile?.full_name || user?.email;
   const isAdmin = userRole === "admin" || userRole === "superadmin";
-  const isLiderOrAdmin = isAdmin || userRole === "lider" || userRole === "pastor";
   const isFinance = isAdmin || userRole === "pastor" || userRole === "tesorero";
 
   // Formateador preciso de Rol
@@ -251,14 +250,18 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               </>
             )}
 
-            {isLiderOrAdmin && (
+            {(canSeeAdoracion || canSeeEscuela) && (
               <>
-                <Link href="/adoracion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
-                  Equipo de Adoración
-                </Link>
-                <Link href="/escuela-dominical" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
-                  Escuela Dominical
-                </Link>
+                {canSeeAdoracion && (
+                  <Link href="/adoracion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                    Equipo de Adoración
+                  </Link>
+                )}
+                {canSeeEscuela && (
+                  <Link href="/escuela-dominical" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                    Escuela Dominical
+                  </Link>
+                )}
               </>
             )}
 

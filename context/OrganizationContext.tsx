@@ -34,7 +34,59 @@ interface OrgContextType {
   userRole: UserRole;
   userProfile: UserProfile | null;
   loading: boolean;
+  canSeeAdoracion: boolean;
+  canSeeEscuela: boolean;
   switchOrganization: (orgId: string) => void;
+}
+
+// Un servidor que sirve en un módulo (aunque no sea líder) también accede a él.
+function matchesAdoracionTeam(name: string) {
+  const n = name.toLowerCase();
+  return (
+    n.includes("adorac") ||
+    n.includes("alabanz") ||
+    n.includes("músic") ||
+    n.includes("banda") ||
+    n.includes("coro") ||
+    n.includes("sonido")
+  );
+}
+
+function matchesEscuelaTeam(name: string) {
+  const n = name.toLowerCase();
+  return (
+    n.includes("escuela") ||
+    n.includes("dominical") ||
+    n.includes("niño") ||
+    n.includes("niña") ||
+    n.includes("maestr") ||
+    n.includes("profesor") ||
+    n.includes("infantil")
+  );
+}
+
+const ADORACION_AREA_TERMS = [
+  "voz",
+  "cantante",
+  "alabanza",
+  "guitarra",
+  "bajo",
+  "batería",
+  "teclado",
+  "piano",
+  "secuencias",
+  "multitracks",
+  "sonido",
+  "plataforma",
+  "adorac",
+];
+
+const ESCUELA_AREA_TERMS = ["escuela", "dominical", "niño", "niña", "maestr", "profesor", "infantil"];
+
+function matchesArea(roleAssigned: string | null, terms: string[]) {
+  if (!roleAssigned) return false;
+  const r = roleAssigned.toLowerCase();
+  return terms.some((t) => r.includes(t));
 }
 
 function normalizeSlug(slug: string) {
@@ -63,6 +115,8 @@ const OrganizationContext = createContext<OrgContextType>({
   userRole: "servidor",
   userProfile: null,
   loading: true,
+  canSeeAdoracion: false,
+  canSeeEscuela: false,
   switchOrganization: () => {},
 });
 
@@ -72,6 +126,8 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [userRole, setUserRole] = useState<UserRole>("servidor");
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [canSeeAdoracion, setCanSeeAdoracion] = useState(false);
+  const [canSeeEscuela, setCanSeeEscuela] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -93,6 +149,8 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
         // Un visitante ve la identidad de la iglesia indicada por su subdominio.
         setOrg(organizationFromHost);
         setUserProfile(null);
+        setCanSeeAdoracion(false);
+        setCanSeeEscuela(false);
         setLoading(false);
         return;
       }
@@ -139,6 +197,60 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
         });
       }
 
+      // 2b. Acceso a los módulos: los líderes/admin/pastor entran siempre; un
+      //     servidor también entra si su ficha (church_members) o sus
+      //     asignaciones apuntan a un equipo de Adoración o de Escuela.
+      const isModuleLeader =
+        currentRole === "lider" ||
+        currentRole === "admin" ||
+        currentRole === "superadmin" ||
+        currentRole === "pastor";
+      setCanSeeAdoracion(isModuleLeader);
+      setCanSeeEscuela(isModuleLeader);
+
+      if (finalUserOrgId && !isModuleLeader) {
+        const { data: teamsData } = await supabase
+          .from("ministry_teams")
+          .select("id, name")
+          .eq("organization_id", finalUserOrgId);
+        const teams = teamsData || [];
+        const adoracionTeamIds = new Set(
+          teams.filter((t) => matchesAdoracionTeam(t.name)).map((t) => t.id)
+        );
+        const escuelaTeamIds = new Set(
+          teams.filter((t) => matchesEscuelaTeam(t.name)).map((t) => t.id)
+        );
+
+        const { data: memberTeams } = await supabase
+          .from("church_members")
+          .select("team_id")
+          .eq("organization_id", finalUserOrgId)
+          .or(`user_id.eq.${session.user.id},email.eq.${session.user.email}`);
+
+        const { data: myAssigns } = await supabase
+          .from("service_assignments")
+          .select("team_id, role_assigned")
+          .eq("organization_id", finalUserOrgId)
+          .eq("user_id", session.user.id)
+          .limit(200);
+
+        const involvedTeams = new Set<string>([
+          ...(memberTeams || []).map((m) => m.team_id),
+          ...(myAssigns || []).map((a) => a.team_id),
+        ]);
+        const myRoles = (myAssigns || []).map((a) => (a.role_assigned as string | null) || null);
+
+        const servesAdoracion =
+          [...involvedTeams].some((t) => adoracionTeamIds.has(t)) ||
+          myRoles.some((r) => matchesArea(r, ADORACION_AREA_TERMS));
+        const servesEscuela =
+          [...involvedTeams].some((t) => escuelaTeamIds.has(t)) ||
+          myRoles.some((r) => matchesArea(r, ESCUELA_AREA_TERMS));
+
+        if (servesAdoracion) setCanSeeAdoracion(true);
+        if (servesEscuela) setCanSeeEscuela(true);
+      }
+
       // Si es SuperAdmin, le permitimos usar el selector de iglesia guardado en localStorage
       const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("selected_org_id") : null;
       const targetOrgId = (currentRole === "superadmin" && savedOrgId) ? savedOrgId : finalUserOrgId;
@@ -177,7 +289,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   return (
     <OrganizationContext.Provider
-      value={{ org, allOrgs, userRole, userProfile, loading, switchOrganization }}
+      value={{ org, allOrgs, userRole, userProfile, loading, canSeeAdoracion, canSeeEscuela, switchOrganization }}
     >
       {children}
     </OrganizationContext.Provider>

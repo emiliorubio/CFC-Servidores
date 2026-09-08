@@ -49,7 +49,7 @@ interface AttendanceRow {
 }
 
 export default function EscuelaDominicalPage() {
-  const { org, userRole, loading: orgLoading } = useOrganization();
+  const { org, loading: orgLoading, canSeeEscuela } = useOrganization();
   const [cultos, setCultos] = useState<EscuelaCulto[]>([]);
   const [selectedCulto, setSelectedCulto] = useState<string>("");
   const [groupName, setGroupName] = useState("Párvulos (3-6 años)");
@@ -285,11 +285,9 @@ export default function EscuelaDominicalPage() {
     );
   };
 
-  const isLiderOrAdmin =
-    userRole === "lider" || userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
-  if (!orgLoading && (!isLiderOrAdmin || !org)) {
+  if (!orgLoading && (!canSeeEscuela || !org)) {
     return (
-      <RestrictedAccess message="La programación de Escuela Dominical está disponible para líderes y administradores con una iglesia asignada." />
+      <RestrictedAccess message="La programación de Escuela Dominical está disponible para el equipo de este ministerio (líderes, administradores y maestros/as con iglesia asignada)." />
     );
   }
 

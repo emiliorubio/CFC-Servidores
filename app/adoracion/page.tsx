@@ -80,7 +80,7 @@ function cultoDetalle(culto: AdoracionCulto) {
 }
 
 export default function AdoracionPage() {
-  const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
+  const { org, userProfile, userRole, loading: orgLoading, canSeeAdoracion } = useOrganization();
   const [loading, setLoading] = useState(true);
 
   // Datos base
@@ -359,9 +359,9 @@ export default function AdoracionPage() {
     }
   };
 
-  if (!orgLoading && (!isLiderOrAdmin || !org)) {
+  if (!orgLoading && (!canSeeAdoracion || !org)) {
     return (
-      <RestrictedAccess message="El módulo de adoración está disponible para líderes y administradores con una iglesia asignada." />
+      <RestrictedAccess message="El módulo de adoración está disponible para el equipo de alabanza (líderes, administradores y músicos/as con iglesia asignada)." />
     );
   }
 

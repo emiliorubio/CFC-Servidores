@@ -18,7 +18,7 @@ export interface Organization {
   signup_visible?: boolean;
 }
 
-export type UserRole = "superadmin" | "admin" | "lider" | "servidor";
+export type UserRole = "superadmin" | "admin" | "pastor" | "tesorero" | "coordinador" | "lider" | "servidor";
 
 export interface UserProfile {
   id: string;

@@ -20,17 +20,19 @@ const ROLE_LABELS: Record<string, string> = {
   lider: "Líder",
   coordinador: "Coordinador",
   pastor: "Pastor",
+  tesorero: "Tesorero",
   admin: "Administrador",
   superadmin: "Superadministrador",
 };
 
-const ROLE_OPTIONS = ["servidor", "lider", "coordinador", "pastor", "admin"] as const;
+const ROLE_OPTIONS = ["servidor", "lider", "coordinador", "pastor", "tesorero", "admin"] as const;
 
 function RoleBadge({ role }: { role: string }) {
   const colors: Record<string, string> = {
     admin: "bg-amber-50 border-amber-300 text-amber-800",
     superadmin: "bg-rose-50 border-rose-300 text-rose-800",
     pastor: "bg-indigo-50 border-indigo-300 text-indigo-800",
+    tesorero: "bg-teal-50 border-teal-300 text-teal-800",
     coordinador: "bg-sky-50 border-sky-300 text-sky-800",
     lider: "bg-violet-50 border-violet-300 text-violet-800",
     servidor: "bg-slate-100 border-slate-300 text-slate-700",

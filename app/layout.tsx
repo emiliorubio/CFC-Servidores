@@ -71,6 +71,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const displayName = profile?.full_name || user?.email;
   const isAdmin = userRole === "admin" || userRole === "superadmin";
   const isLiderOrAdmin = isAdmin || userRole === "lider";
+  const isFinance = isAdmin || userRole === "pastor" || userRole === "tesorero";
 
   // Formateador preciso de Rol
   const formatRole = (role?: string | null) => {
@@ -78,6 +79,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     if (!activeRole) return "Servidor";
     const cleanRole = activeRole.toLowerCase().trim();
     if (cleanRole === "admin" || cleanRole === "superadmin" || cleanRole === "pastor") return "Pastor / Admin";
+    if (cleanRole === "tesorero") return "Tesorero";
     if (cleanRole === "lider" || cleanRole === "líder") return "Líder";
     if (cleanRole === "coordinador") return "Coordinador";
     return "Servidor";
@@ -220,6 +222,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                   Escuela Dominical
                 </Link>
               </>
+            )}
+
+            {isFinance && (
+              <Link href="/finanzas" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                💰 Finanzas
+              </Link>
             )}
 
             {isAdmin && (

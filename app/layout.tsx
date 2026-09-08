@@ -22,6 +22,33 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [installEvent, setInstallEvent] = useState<Event | null>(null);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallEvent(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const installApp = async () => {
+    if (!installEvent) return;
+    const evt = installEvent as Event & { prompt: () => Promise<void>; userChoice: Promise<unknown> };
+    try {
+      await evt.prompt();
+      await evt.userChoice;
+    } finally {
+      setInstallEvent(null);
+    }
+  };
 
   useEffect(() => {
     const checkUser = async () => {
@@ -269,6 +296,16 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
         © 2026 {org?.name || "Centro de Formación Cristiana"}. Desarrollado para la edificación del cuerpo de Cristo.
       </footer>
+
+      {/* Botón flotante de instalación (PWA), aparece solo si el navegador lo permite */}
+      {installEvent && (
+        <button
+          onClick={installApp}
+          className="fixed bottom-5 right-5 z-50 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-xl border border-white/10"
+        >
+          📲 Instalar app
+        </button>
+      )}
     </div>
   );
 }

@@ -240,6 +240,32 @@ export default function HomePage() {
                   )}
                 </div>
               )}
+              {schedules.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-white/70 mb-2">
+                    Próximos cultos
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs font-bold text-white">
+                    {schedules.slice(0, 3).map((schedule) => (
+                      <span
+                        key={schedule.id}
+                        className="bg-white/10 border border-white/25 rounded-full px-3 py-1.5"
+                      >
+                        🗓️ {formatearFechaCulto(schedule.service_date)}
+                        {horaCulto(schedule.service_date) && (
+                          <span className="text-white/80"> · ⏰ {horaCulto(schedule.service_date)}</span>
+                        )}
+                      </span>
+                    ))}
+                    <a
+                      href="#cronograma"
+                      className="bg-white/20 hover:bg-white/30 border border-white/30 rounded-full px-3 py-1.5 transition-colors"
+                    >
+                      Ver cronograma ↓
+                    </a>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-3 pt-2">
                 <Link
                   href={`/login?org=${org.slug}&mode=login`}
@@ -267,7 +293,7 @@ export default function HomePage() {
       )}
       
       {/* Resumen público de la agenda, conservando el diseño de la versión anterior. */}
-      <div className="rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-slate-900 border border-slate-800">
+      <div id="cronograma" className="rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-slate-900 border border-slate-800">
         <div className="space-y-2 max-w-2xl relative z-10">
           <span className="bg-amber-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-amber-400 border border-amber-500/30">
             Cronograma oficial

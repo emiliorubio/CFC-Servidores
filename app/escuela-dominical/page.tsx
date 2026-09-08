@@ -210,7 +210,8 @@ export default function EscuelaDominicalPage() {
     setSaving(false);
   };
 
-  const isLiderOrAdmin = userRole === "lider" || userRole === "admin" || userRole === "superadmin";
+  const isLiderOrAdmin =
+    userRole === "lider" || userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   if (!orgLoading && (!isLiderOrAdmin || !org)) {
     return (
       <RestrictedAccess message="La programación de Escuela Dominical está disponible para líderes y administradores con una iglesia asignada." />
@@ -331,7 +332,7 @@ export default function EscuelaDominicalPage() {
                 a.resolvedArea.toLowerCase().includes("escuela") ||
                 a.resolvedArea.toLowerCase().includes("dominical") ||
                 a.resolvedArea.toLowerCase().includes("niño") ||
-                a.resolvedArea.toLowerCase().includes("maestra") ||
+                a.resolvedArea.toLowerCase().includes("maestr") ||
                 a.resolvedArea.toLowerCase().includes("profesor")
               );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import Link from "next/link";
@@ -25,31 +25,74 @@ export default function HomePage() {
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Cargar cultos filtrados por la iglesia activa
-  const fetchSchedules = useCallback(async () => {
+  // Generación automática de cultos según el horario de la iglesia
+  const [generating, setGenerating] = useState<number | null>(null);
+  const [genMessage, setGenMessage] = useState<{ type: "success" | "info" | "error"; text: string } | null>(null);
+
+  const generateCultos = async (meses: number) => {
     if (!org?.id) return;
+    setGenerating(meses);
+    setGenMessage(null);
     try {
-      const { data, error } = await supabase
-        .from("service_schedules")
-        .select("*")
-        .eq("organization_id", org.id)
-        .order("service_date", { ascending: true });
-
-      if (error) throw error;
-      setSchedules(data || []);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setGenMessage({ type: "error", text: "Inicia sesión para generar cultos." });
+        return;
+      }
+      const res = await fetch("/api/cultos/generar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ orgId: org.id, meses }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "No se pudieron generar los cultos.");
+      setGenMessage({
+        type: result.creados > 0 ? "success" : "info",
+        text: result.message,
+      });
+      setReloadKey((k) => k + 1);
     } catch (err) {
-      console.error("Error al cargar los servicios:", err);
+      setGenMessage({
+        type: "error",
+        text: "Error al generar cultos: " + (err instanceof Error ? err.message : String(err)),
+      });
     } finally {
-      setLoading(false);
+      setGenerating(null);
     }
-  }, [org]);
+  };
 
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Cargar cultos filtrados por la iglesia activa (se recarga al cambiar de
+  // iglesia o al generar/crear nuevos cultos).
   useEffect(() => {
-    if (org?.id) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de cultos al montar
-      fetchSchedules();
-    }
-  }, [org?.id, fetchSchedules]);
+    if (!org?.id) return;
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("service_schedules")
+          .select("*")
+          .eq("organization_id", org.id)
+          .order("service_date", { ascending: true });
+
+        if (error) throw error;
+        if (active) setSchedules(data || []);
+      } catch (err) {
+        console.error("Error al cargar los servicios:", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [org?.id, reloadKey]);
 
   const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,7 +115,7 @@ export default function HomePage() {
       setTitle("Culto Dominical");
       setServiceDate("");
       setDescription("");
-      fetchSchedules();
+      setReloadKey((k) => k + 1);
     } catch (err) {
       alert("Error al guardar culto: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -80,7 +123,8 @@ export default function HomePage() {
     }
   };
 
-  const isAdminOrLider = userRole === "admin" || userRole === "superadmin" || userRole === "lider";
+  const isAdminOrLider =
+    userRole === "admin" || userRole === "superadmin" || userRole === "lider" || userRole === "pastor";
   const orgName = org?.name || "tu iglesia";
 
   if (orgLoading || (loading && org?.id)) {
@@ -110,14 +154,45 @@ export default function HomePage() {
         </div>
 
         {isAdminOrLider && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="relative z-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm whitespace-nowrap"
-          >
-            + Nuevo Culto / Servicio
-          </button>
+          <div className="relative z-10 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => generateCultos(1)}
+              disabled={generating !== null}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm disabled:opacity-50"
+            >
+              {generating === 1 ? "Generando..." : "⚡ Gén. Cultos 1 mes"}
+            </button>
+            <button
+              onClick={() => generateCultos(2)}
+              disabled={generating !== null}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm disabled:opacity-50"
+            >
+              {generating === 2 ? "Generando..." : "⚡ Gén. Cultos 2 meses"}
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm whitespace-nowrap"
+            >
+              + Nuevo Culto / Servicio
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Resultado de la generación automática */}
+      {genMessage && (
+        <div
+          className={`p-4 rounded-2xl text-sm font-semibold ${
+            genMessage.type === "success"
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+              : genMessage.type === "info"
+                ? "bg-sky-50 border border-sky-200 text-sky-800"
+                : "bg-rose-50 border border-rose-200 text-rose-800"
+          }`}
+        >
+          {genMessage.text}
+        </div>
+      )}
 
       {/* Lista de Cultos / Cronograma */}
       <div className="space-y-4">

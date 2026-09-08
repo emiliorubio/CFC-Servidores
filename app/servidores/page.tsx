@@ -218,7 +218,7 @@ export default function ServidoresPage() {
   };
 
   const isLeaderOrAdmin =
-    userRole === "admin" || userRole === "superadmin" || userRole === "lider";
+    userRole === "admin" || userRole === "superadmin" || userRole === "lider" || userRole === "pastor";
 
   const visibleAssignments = selectedFilterArea === "all"
     ? assignments

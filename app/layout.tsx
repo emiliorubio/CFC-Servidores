@@ -70,7 +70,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
   const displayName = profile?.full_name || user?.email;
   const isAdmin = userRole === "admin" || userRole === "superadmin";
-  const isLiderOrAdmin = isAdmin || userRole === "lider";
+  const isLiderOrAdmin = isAdmin || userRole === "lider" || userRole === "pastor";
   const isFinance = isAdmin || userRole === "pastor" || userRole === "tesorero";
 
   // Formateador preciso de Rol

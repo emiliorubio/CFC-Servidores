@@ -500,6 +500,190 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
   );
 }
 
+function SuperadminNewOrg() {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [primaryColor, setPrimaryColor] = useState("#4F46E5");
+  const [secondaryColor, setSecondaryColor] = useState("#0F172A");
+  const [signupVisible, setSignupVisible] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const normalizeSlug = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalSlug = normalizeSlug(slug || name);
+    if (!name.trim() || !finalSlug) {
+      setMessage({ type: "error", text: "Indica el nombre de la iglesia." });
+      return;
+    }
+    setCreating(true);
+    setMessage(null);
+
+    const { data: dup } = await supabase
+      .from("organizations")
+      .select("id")
+      .eq("slug", finalSlug)
+      .maybeSingle();
+    if (dup) {
+      setMessage({ type: "error", text: `Ya existe una iglesia con el slug "${finalSlug}".` });
+      setCreating(false);
+      return;
+    }
+
+    const { error } = await supabase.from("organizations").insert({
+      name: name.trim(),
+      slug: finalSlug,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+      signup_visible: signupVisible,
+      service_pattern: [],
+      plan: "free",
+      active_modules: {},
+    });
+    setCreating(false);
+
+    if (error) {
+      setMessage({ type: "error", text: "No se pudo crear la iglesia: " + error.message });
+      return;
+    }
+    setMessage({
+      type: "success",
+      text: `Iglesia "${name.trim()}" creada con slug "${finalSlug}". Refresca la página para verla en el selector.`,
+    });
+    setName("");
+    setSlug("");
+  };
+
+  return (
+    <section className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-5">
+      <div>
+        <h2 className="text-lg font-bold text-slate-800">➕ Nueva iglesia (Superadmin)</h2>
+        <p className="text-xs text-slate-500 mt-1">
+          Crea una organización nueva en la plataforma. Luego se puede entrar desde su subdominio
+          (<code className="text-indigo-600 font-semibold">tu-slug.miiglesia.cl</code>) y configurar
+          horarios, colores y registro.
+        </p>
+      </div>
+
+      {message && (
+        <div
+          className={`p-4 rounded-2xl text-sm font-semibold ${
+            message.type === "success"
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border border-rose-200 text-rose-800"
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
+
+      <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-slate-700">Nombre de la iglesia</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ej.: CFC Nueva Vida"
+            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800"
+            required
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-slate-700">Slug (subdominio)</label>
+          <input
+            type="text"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            onBlur={() => setSlug(normalizeSlug(slug || name))}
+            placeholder="Ej.: cfc-nueva-vida"
+            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800"
+          />
+          <p className="text-[11px] text-slate-500">Déjalo vacío para generarlo desde el nombre.</p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-slate-700">Color primario</label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={primaryColor}
+              onChange={(e) => setPrimaryColor(e.target.value)}
+              className="w-12 h-12 rounded-xl cursor-pointer border-0"
+            />
+            <input
+              type="text"
+              value={primaryColor}
+              onChange={(e) => setPrimaryColor(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-sm uppercase"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-slate-700">Color secundario</label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={secondaryColor}
+              onChange={(e) => setSecondaryColor(e.target.value)}
+              className="w-12 h-12 rounded-xl cursor-pointer border-0"
+            />
+            <input
+              type="text"
+              value={secondaryColor}
+              onChange={(e) => setSecondaryColor(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-sm uppercase"
+            />
+          </div>
+        </div>
+
+        <div className="md:col-span-2 flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <p className="text-sm font-bold text-slate-800">Registro abierto desde el inicio</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Permite que nuevas personas se registren en esta iglesia desde el inicio.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={signupVisible}
+            onClick={() => setSignupVisible((v) => !v)}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+              signupVisible ? "bg-emerald-500" : "bg-slate-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                signupVisible ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="md:col-span-2">
+          <button
+            type="submit"
+            disabled={creating}
+            className="w-full text-white font-bold py-3 px-4 rounded-xl shadow-md hover:opacity-90 transition-opacity disabled:opacity-50"
+            style={{ backgroundColor: primaryColor }}
+          >
+            {creating ? "Creando iglesia..." : "Crear iglesia"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 export default function ConfiguracionPage() {
   const { org, userRole, loading: orgLoading } = useOrganization();
 
@@ -518,5 +702,12 @@ export default function ConfiguracionPage() {
     );
   }
 
-  return <ConfigureOrgForm key={org.id} org={org} />;
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <ConfigureOrgForm key={org.id} org={org} />
+        {userRole === "superadmin" && <SuperadminNewOrg />}
+      </div>
+    </div>
+  );
 }

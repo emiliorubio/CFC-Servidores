@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
-import { formatearFechaCulto, horaCulto } from "@/lib/format";
+import { formatearFechaCulto, horaCulto, downloadCsv } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
 
 interface EscuelaCulto {
@@ -256,6 +256,35 @@ export default function EscuelaDominicalPage() {
     }
   };
 
+  const handleExportAttendance = (culto: EscuelaCulto) => {
+    const cultLessons = lessons.filter((l) => l.service_schedule_id === culto.id);
+    const filas: (string | number)[][] = [
+      ["Fecha", "Culto", "Grupo", "Tema", "Niño/a", "Presente"],
+    ];
+    cultLessons.forEach((lesson) => {
+      const rows = attendance.filter((a) => a.lesson_id === lesson.id);
+      if (rows.length === 0) {
+        filas.push([formatCleanDate(culto), culto.title || "Culto", lesson.group_name, lesson.topic, "—", "—"]);
+      } else {
+        rows.forEach((a) => {
+          filas.push([
+            formatCleanDate(culto),
+            culto.title || "Culto",
+            lesson.group_name,
+            lesson.topic,
+            a.full_name,
+            a.present ? "Presente" : "Ausente",
+          ]);
+        });
+      }
+    });
+    downloadCsv(
+      `asistencia_${culto.id.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}.csv`,
+      filas[0] as string[],
+      filas.slice(1) as (string | number)[][]
+    );
+  };
+
   const isLiderOrAdmin =
     userRole === "lider" || userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   if (!orgLoading && (!isLiderOrAdmin || !org)) {
@@ -407,9 +436,18 @@ export default function EscuelaDominicalPage() {
                         🗓️ {formatCleanDate(culto)} — ⏰ {formatCleanTime(culto)}
                       </p>
                     </div>
-                    <span className="text-[10px] font-bold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full">
-                      {cultLessons.length} clase(s)
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleExportAttendance(culto)}
+                        title="Exportar asistencia a CSV"
+                        className="text-[10px] font-bold px-2.5 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors rounded-full"
+                      >
+                        ⬇ CSV
+                      </button>
+                      <span className="text-[10px] font-bold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full">
+                        {cultLessons.length} clase(s)
+                      </span>
+                    </div>
                   </div>
 
                   {/* BLOQUE MAESTRAS CONFIRMADAS */}

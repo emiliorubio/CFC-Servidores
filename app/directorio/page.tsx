@@ -70,6 +70,7 @@ export default function DirectorioPage() {
   // Filtros
   const [search, setSearch] = useState("");
   const [filterTeam, setFilterTeam] = useState("all");
+  const [copied, setCopied] = useState(false);
 
   // Alta de miembro
   const [name, setName] = useState("");
@@ -151,6 +152,20 @@ export default function DirectorioPage() {
     const matchesTeam = filterTeam === "all" || m.team_id === filterTeam;
     return matchesSearch && matchesTeam;
   });
+
+  const handleCopyList = async () => {
+    if (filteredMembers.length === 0) return;
+    const text = filteredMembers
+      .map((m) => `${m.full_name}${m.phone ? ` — ${m.phone}` : ""}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.alert("No se pudo copiar la lista. Revisa los permisos del portapapeles.");
+    }
+  };
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,6 +342,19 @@ export default function DirectorioPage() {
             })}
             <option value="none">Sin área asignada</option>
           </select>
+        </div>
+
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-xs text-slate-500 font-medium">
+            Mostrando {filteredMembers.length} persona(s)
+          </p>
+          <button
+            onClick={handleCopyList}
+            disabled={filteredMembers.length === 0}
+            className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold px-3 py-2 rounded-xl transition-colors"
+          >
+            {copied ? "✓ Lista copiada" : "📋 Copiar lista"}
+          </button>
         </div>
 
         {loading ? (

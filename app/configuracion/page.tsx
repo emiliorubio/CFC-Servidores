@@ -13,6 +13,8 @@ interface MinistryTeam {
   role_needed: string;
 }
 
+const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
 function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
@@ -25,6 +27,12 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
   const [address, setAddress] = useState(org.address || "");
   const [serviceTimes, setServiceTimes] = useState(org.service_times || "");
   const [contactPhone, setContactPhone] = useState(org.contact_phone || "");
+  const [pattern, setPattern] = useState<{ weekday: number; time: string }[]>(
+    Array.isArray(org.service_pattern) ? [...org.service_pattern] : []
+  );
+  const [signupVisible, setSignupVisible] = useState(org.signup_visible ?? true);
+  const [newWeekday, setNewWeekday] = useState(org.service_pattern?.[0]?.weekday ?? 0);
+  const [newTime, setNewTime] = useState(org.service_pattern?.[0]?.time?.slice(0, 5) ?? "19:00");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -118,6 +126,19 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
     }
   };
 
+  const handleAddSlot = () => {
+    if (!newTime) return;
+    if (!DAY_NAMES[newWeekday]) return;
+    setPattern((prev) =>
+      [...prev.filter((s) => s.weekday !== newWeekday), { weekday: newWeekday, time: newTime }].sort(
+        (a, b) => a.weekday - b.weekday
+      )
+    );
+  };
+
+  const handleRemoveSlot = (weekday: number) =>
+    setPattern((prev) => prev.filter((s) => s.weekday !== weekday));
+
   // Guardar cambios en la base de datos
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +157,8 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
           address: address.trim() || null,
           service_times: serviceTimes.trim() || null,
           contact_phone: contactPhone.trim() || null,
+          service_pattern: pattern,
+          signup_visible: signupVisible,
         })
         .eq("id", org.id);
 
@@ -216,6 +239,31 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
             {uploading && <p className="text-xs text-indigo-600 font-medium">Subiendo imagen...</p>}
           </div>
 
+          {/* Registro abierto */}
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <p className="text-sm font-bold text-slate-800">Registro abierto para nuevas personas</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Si está activo, cualquiera puede crear una cuenta eligiendo esta iglesia desde /login.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={signupVisible}
+              onClick={() => setSignupVisible((value) => !value)}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                signupVisible ? "bg-emerald-500" : "bg-slate-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  signupVisible ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
           <hr className="border-slate-100" />
 
           {/* Datos de contacto para la bienvenida por WhatsApp */}
@@ -258,6 +306,80 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
                 />
               </div>
             </div>
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Horarios de culto (alimentan "Gén. Cultos") */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">Horarios de culto</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Son los que usa <strong>&ldquo;⚡ Gén. Cultos 1 mes&rdquo;</strong> en el inicio. Un horario por día; si repites un
+                día se reemplaza.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700">Día</label>
+                <select
+                  value={newWeekday}
+                  onChange={(event) => setNewWeekday(Number(event.target.value))}
+                  className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800"
+                >
+                  {DAY_NAMES.map((day, idx) => (
+                    <option key={day} value={idx}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700">Hora (Chile)</label>
+                <input
+                  type="time"
+                  value={newTime}
+                  onChange={(event) => setNewTime(event.target.value)}
+                  className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddSlot}
+                disabled={!newTime}
+                className="rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50"
+              >
+                + Agregar horario
+              </button>
+            </div>
+
+            {pattern.length === 0 ? (
+              <p className="rounded-xl bg-slate-50 border border-dashed border-slate-200 p-4 text-xs text-slate-500">
+                No hay horarios configurados.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {pattern.map((slot) => (
+                  <div
+                    key={slot.weekday}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{DAY_NAMES[slot.weekday]}</p>
+                      <p className="text-[11px] text-slate-500">⏰ {slot.time} hrs</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSlot(slot.weekday)}
+                      className="text-xs font-bold text-rose-600 hover:text-rose-700"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <hr className="border-slate-100" />

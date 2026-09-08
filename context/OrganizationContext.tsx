@@ -16,6 +16,7 @@ export interface Organization {
   service_times?: string | null;
   contact_phone?: string | null;
   signup_visible?: boolean;
+  service_pattern?: { weekday: number; time: string }[];
 }
 
 export type UserRole = "superadmin" | "admin" | "pastor" | "tesorero" | "coordinador" | "lider" | "servidor";

@@ -21,23 +21,39 @@ alter table public.consolidations
   add column if not exists person_id uuid references public.consolidation_people(id) on delete set null;
 
 -- Backfill: agrupa los registros existentes y crea una persona por contacto
--- (teléfono, o nombre completo si no hay teléfono).
+-- (teléfono, o nombre completo si no hay teléfono). Es idempotente: no
+-- duplica personas si el script se corre más de una vez.
 insert into public.consolidation_people (organization_id, full_name, phone, email, status)
 select
   c.organization_id,
   c.full_name,
-  coalesce(c.phone, null) as phone,
+  c.phone,
   nullif(min(c.email), '') as email,
   case when count(*) >= 2 then 'reiterado' else 'nuevo' end as status
 from public.consolidations c
-group by c.organization_id, coalesce(c.phone, c.full_name), c.full_name;
+group by c.organization_id, coalesce(c.phone, c.full_name), c.full_name, c.phone
+having not exists (
+  select 1
+  from public.consolidation_people pp
+  where pp.organization_id = c.organization_id
+    and pp.full_name = c.full_name
+    and coalesce(pp.phone, pp.full_name) = coalesce(c.phone, c.full_name)
+);
 
+-- Unicidad para que la app no cree personas duplicadas.
+create unique index if not exists consolidation_people_org_phone_uq
+  on public.consolidation_people (organization_id, phone) where phone is not null;
+create unique index if not exists consolidation_people_org_name_uq
+  on public.consolidation_people (organization_id, full_name) where phone is null;
+
+-- Vincula los registros a su persona (no re-vincula los ya asignados).
 update public.consolidations c
 set person_id = p.id
 from public.consolidation_people p
 where p.organization_id = c.organization_id
   and p.full_name = c.full_name
-  and coalesce(p.phone, p.full_name) = coalesce(c.phone, c.full_name);
+  and coalesce(p.phone, p.full_name) = coalesce(c.phone, c.full_name)
+  and c.person_id is null;
 
 -- RLS: lectura para miembros de la iglesia; la gestión del estado (update/delete)
 -- solo para líderes/admin/pastor/superadmin.

@@ -65,6 +65,7 @@ function ConsolidationForm({ org }: { org: Organization }) {
   // Historial completo (todo lo registrado en la iglesia)
   const [allRecords, setAllRecords] = useState<ConsolidationRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Filtros del historial
   const [fromDate, setFromDate] = useState("");
@@ -118,6 +119,23 @@ function ConsolidationForm({ org }: { org: Organization }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de registros al montar
     loadHistory();
   }, [loadHistory]);
+
+  const handleDeleteRecord = async (record: ConsolidationRecord) => {
+    if (!org?.id) return;
+    if (!window.confirm(`¿Eliminar el registro de "${record.full_name}"? Esta acción no se puede deshacer.`)) return;
+    setDeletingId(record.id);
+    const { error } = await supabase
+      .from("consolidations")
+      .delete()
+      .eq("id", record.id)
+      .eq("organization_id", org.id);
+    setDeletingId(null);
+    if (error) {
+      window.alert("No se pudo eliminar el registro: " + error.message);
+      return;
+    }
+    await loadHistory();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -408,14 +426,26 @@ function ConsolidationForm({ org }: { org: Organization }) {
                         <td className="px-4 py-3 text-slate-500 max-w-[180px] truncate">{record.note || "—"}</td>
                         <td className="px-4 py-3 text-slate-500 capitalize">{formatFullDate(record.created_at)}</td>
                         <td className="px-4 py-3">
-                          <a
-                            href={whatsappLink(org, record.full_name, record.phone)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
-                          >
-                            WhatsApp →
-                          </a>
+                          <div className="flex items-center gap-3">
+                            <a
+                              href={whatsappLink(org, record.full_name, record.phone)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
+                            >
+                              WhatsApp →
+                            </a>
+                            {isMember && (
+                              <button
+                                onClick={() => handleDeleteRecord(record)}
+                                disabled={deletingId === record.id}
+                                title="Eliminar registro (corregir error)"
+                                className="text-xs text-slate-300 hover:text-red-500 transition-colors"
+                              >
+                                {deletingId === record.id ? "..." : "🗑️"}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

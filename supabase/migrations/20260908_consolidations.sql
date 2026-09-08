@@ -60,7 +60,13 @@ create policy "consolidations_update_auth" on public.consolidations
   using (public.can_manage_org(organization_id))
   with check (public.can_manage_org(organization_id));
 
--- Solo administradores de la iglesia pueden borrar.
+-- Miembros de la iglesia o quien creó el registro pueden borrarlo (corregir errores).
+drop policy if exists "consolidations_delete_auth" on public.consolidations;
 create policy "consolidations_delete_auth" on public.consolidations
   for delete to authenticated
-  using (public.can_manage_org(organization_id) or public.is_admin_of_org(organization_id));
+  using (
+    public.can_manage_org(organization_id)
+    or public.is_admin_of_org(organization_id)
+    or organization_id = public.user_organization_id()
+    or created_by = auth.uid()
+  );

@@ -159,6 +159,8 @@ export default function HomePage() {
 
   const isAdminOrLider =
     userRole === "admin" || userRole === "superadmin" || userRole === "lider" || userRole === "pastor";
+  const canGenerateCultos =
+    userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   const canDeleteCulto =
     userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   const orgName = org?.name || "tu iglesia";
@@ -280,20 +282,24 @@ export default function HomePage() {
 
         {isAdminOrLider && (
           <div className="relative z-10 flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => generateCultos(1)}
-              disabled={generating !== null}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm disabled:opacity-50"
-            >
-              {generating === 1 ? "Generando..." : "⚡ Gén. Cultos 1 mes"}
-            </button>
-            <button
-              onClick={() => generateCultos(2)}
-              disabled={generating !== null}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm disabled:opacity-50"
-            >
-              {generating === 2 ? "Generando..." : "⚡ Gén. Cultos 2 meses"}
-            </button>
+            {canGenerateCultos && (
+              <>
+                <button
+                  onClick={() => generateCultos(1)}
+                  disabled={generating !== null}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm disabled:opacity-50"
+                >
+                  {generating === 1 ? "Generando..." : "⚡ Gén. Cultos 1 mes"}
+                </button>
+                <button
+                  onClick={() => generateCultos(2)}
+                  disabled={generating !== null}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm disabled:opacity-50"
+                >
+                  {generating === 2 ? "Generando..." : "⚡ Gén. Cultos 2 meses"}
+                </button>
+              </>
+            )}
             <button
               onClick={() => setShowModal(true)}
               className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-3 rounded-2xl shadow-lg transition-transform hover:scale-105 text-xs md:text-sm whitespace-nowrap"

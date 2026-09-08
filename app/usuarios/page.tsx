@@ -15,6 +15,18 @@ interface ProfileRow {
   organization_id: string | null;
 }
 
+interface MinistryTeam {
+  id: string;
+  name: string;
+}
+
+interface ChurchMember {
+  id: string;
+  user_id: string | null;
+  email: string | null;
+  team_id: string | null;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   servidor: "Servidor",
   lider: "Líder",
@@ -46,21 +58,29 @@ function RoleBadge({ role }: { role: string }) {
 
 function UsersPanel({ org }: { org: Organization }) {
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
+  const [teams, setTeams] = useState<MinistryTeam[]>([]);
+  const [members, setMembers] = useState<ChurchMember[]>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, role, requested_role, organization_id")
-      .eq("organization_id", org.id)
-      .order("created_at", { ascending: false });
+    const [profilesRes, teamsRes, membersRes] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, role, requested_role, organization_id")
+        .eq("organization_id", org.id)
+        .order("created_at", { ascending: false }),
+      supabase.from("ministry_teams").select("id, name").eq("organization_id", org.id).order("name"),
+      supabase.from("church_members").select("id, user_id, email, team_id").eq("organization_id", org.id),
+    ]);
 
-    if (error) {
-      setMessage({ type: "error", text: "No se pudieron cargar los usuarios: " + error.message });
+    if (profilesRes.error) {
+      setMessage({ type: "error", text: "No se pudieron cargar los usuarios: " + profilesRes.error.message });
       return;
     }
-    setProfiles((data || []) as ProfileRow[]);
+    setProfiles((profilesRes.data || []) as ProfileRow[]);
+    setTeams((teamsRes.data || []) as MinistryTeam[]);
+    setMembers((membersRes.data || []) as ChurchMember[]);
   }, [org.id]);
 
   useEffect(() => {
@@ -68,18 +88,71 @@ function UsersPanel({ org }: { org: Organization }) {
     loadUsers();
   }, [loadUsers]);
 
-  const handleRoleChange = async (profileId: string, newRole: string) => {
-    setSavingId(profileId);
+  const memberOf = (profile: ProfileRow) =>
+    members.find(
+      (m) =>
+        m.user_id === profile.id ||
+        (m.email && profile.email && m.email.toLowerCase() === profile.email.toLowerCase())
+    );
+
+  const handleRoleChange = async (profile: ProfileRow, newRole: string) => {
+    setSavingId(profile.id);
     setMessage(null);
-    const { error } = await supabase
-      .from("profiles")
-      .update({ role: newRole })
-      .eq("id", profileId);
+    const { error } = await supabase.from("profiles").update({ role: newRole, requested_role: null }).eq("id", profile.id);
 
     if (error) {
       setMessage({ type: "error", text: "No se pudo actualizar el rol: " + error.message });
     } else {
-      setMessage({ type: "success", text: "Rol actualizado correctamente." });
+      setMessage({ type: "success", text: `Rol de ${profile.full_name || "la persona"} actualizado a ${ROLE_LABELS[newRole]}.` });
+      await loadUsers();
+    }
+    setSavingId(null);
+  };
+
+  const handleApprove = async (profile: ProfileRow) => {
+    if (!profile.requested_role) return;
+    setSavingId(profile.id);
+    setMessage(null);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role: profile.requested_role, requested_role: null })
+      .eq("id", profile.id);
+
+    if (error) {
+      setMessage({ type: "error", text: "No se pudo aprobar la solicitud: " + error.message });
+    } else {
+      setMessage({ type: "success", text: `Solicitud aprobada: ${profile.full_name || "la persona"} ahora es ${ROLE_LABELS[profile.requested_role]}.` });
+      await loadUsers();
+    }
+    setSavingId(null);
+  };
+
+  const handleTeamChange = async (profile: ProfileRow, teamId: string | null) => {
+    setSavingId(profile.id);
+    setMessage(null);
+
+    const existing = memberOf(profile);
+    let error: { message: string } | null = null;
+
+    if (existing) {
+      const res = await supabase.from("church_members").update({ team_id: teamId || null }).eq("id", existing.id);
+      error = res.error;
+    } else {
+      const res = await supabase.from("church_members").insert({
+        organization_id: org.id,
+        full_name: profile.full_name || "Sin nombre",
+        email: profile.email,
+        user_id: profile.id,
+        role: profile.role === "superadmin" ? "admin" : profile.role,
+        team_id: teamId || null,
+      });
+      error = res.error;
+    }
+
+    if (error) {
+      setMessage({ type: "error", text: "No se pudo asignar el área: " + error.message });
+    } else {
+      setMessage({ type: "success", text: "Área asignada correctamente." });
       await loadUsers();
     }
     setSavingId(null);
@@ -87,15 +160,14 @@ function UsersPanel({ org }: { org: Organization }) {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Encabezado */}
+      <div className="max-w-5xl mx-auto space-y-6">
         <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-lg space-y-2">
           <span className="inline-flex text-xs font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-full">
             ADMINISTRACIÓN DE PERSONAS
           </span>
           <h1 className="text-3xl font-extrabold tracking-tight">👥 Usuarios de {org.name}</h1>
           <p className="text-sm text-slate-300">
-            Ve tu equipo y confirma el rol de cada persona (Servidor, Líder, Coordinador, Pastor o Administrador).
+            Confirma el rol de cada persona, aprueba las solicitudes pendientes y asígnala a su área de servicio.
           </p>
         </div>
 
@@ -131,40 +203,68 @@ function UsersPanel({ org }: { org: Organization }) {
                     <th className="px-4 py-3 font-bold">Persona</th>
                     <th className="px-4 py-3 font-bold">Contacto</th>
                     <th className="px-4 py-3 font-bold">Rol actual</th>
+                    <th className="px-4 py-3 font-bold">Área / Equipo</th>
                     <th className="px-4 py-3 font-bold">Asignar rol</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {profiles.map((profile) => (
-                    <tr key={profile.id} className="border-t border-slate-100">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-slate-800">{profile.full_name || "Sin nombre"}</p>
-                        {profile.requested_role && profile.requested_role !== profile.role && (
-                          <p className="text-[11px] text-sky-700 font-bold mt-0.5">
-                            Solicita: {ROLE_LABELS[profile.requested_role] || profile.requested_role}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{profile.email || "—"}</td>
-                      <td className="px-4 py-3">
-                        <RoleBadge role={profile.role} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={profile.role}
-                          disabled={savingId === profile.id}
-                          onChange={(e) => handleRoleChange(profile.id, e.target.value)}
-                          className="text-xs font-semibold py-1.5 px-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-                        >
-                          {ROLE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {ROLE_LABELS[option]}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
+                  {profiles.map((profile) => {
+                    const member = memberOf(profile);
+                    return (
+                      <tr key={profile.id} className="border-t border-slate-100 align-top">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-slate-800">{profile.full_name || "Sin nombre"}</p>
+                          {profile.requested_role && profile.requested_role !== profile.role && (
+                            <span className="inline-flex items-center gap-2 mt-1">
+                              <span className="text-[11px] text-sky-700 font-bold bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">
+                                Pide ser {ROLE_LABELS[profile.requested_role] || profile.requested_role}
+                              </span>
+                              <button
+                                onClick={() => handleApprove(profile)}
+                                disabled={savingId === profile.id}
+                                className="text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-full px-2.5 py-0.5 disabled:opacity-50"
+                              >
+                                Aprobar
+                              </button>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{profile.email || "—"}</td>
+                        <td className="px-4 py-3">
+                          <RoleBadge role={profile.role} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={member?.team_id || ""}
+                            disabled={savingId === profile.id}
+                            onChange={(e) => handleTeamChange(profile, e.target.value || null)}
+                            className="text-xs font-semibold py-1.5 px-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                          >
+                            <option value="">Sin área</option>
+                            {teams.map((team) => (
+                              <option key={team.id} value={team.id}>
+                                {team.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={profile.role}
+                            disabled={savingId === profile.id}
+                            onChange={(e) => handleRoleChange(profile, e.target.value)}
+                            className="text-xs font-semibold py-1.5 px-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                          >
+                            {ROLE_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {ROLE_LABELS[option]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -9,7 +9,11 @@ export default function AuthPage() {
   const router = useRouter();
   const { org, allOrgs } = useOrganization();
 
-  const [isRegister, setIsRegister] = useState(false);
+  const [isRegister, setIsRegister] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("mode") === "register"
+  );
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

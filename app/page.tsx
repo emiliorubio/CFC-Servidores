@@ -26,7 +26,7 @@ interface ServiceAssignment {
 }
 
 export default function HomePage() {
-  const { org, userRole, loading: orgLoading } = useOrganization();
+  const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
   const [schedules, setSchedules] = useState<ServiceSchedule[]>([]);
   const [teams, setTeams] = useState<MinistryTeam[]>([]);
   const [assignments, setAssignments] = useState<ServiceAssignment[]>([]);
@@ -205,6 +205,64 @@ export default function HomePage() {
 
   return (
     <div className="space-y-8">
+
+      {/* Portada pública: lo que ve un visitante sin sesión */}
+      {!userProfile && org && (
+        <section
+          className="relative overflow-hidden rounded-3xl p-6 md:p-10 text-white shadow-xl"
+          style={{
+            background: `linear-gradient(135deg, ${org.primary_color || "#4F46E5"} 0%, ${org.secondary_color || "#0F172A"} 100%)`,
+          }}
+        >
+          <div className="absolute -right-10 -top-10 w-56 h-56 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center gap-6">
+            <div className="space-y-3 flex-1">
+              <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                Bienvenidos a
+              </span>
+              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{org.name}</h1>
+              <p className="text-sm text-white/80 max-w-xl leading-relaxed">
+                Organizamos los próximos servicios, los equipos de adoración, la escuela dominical y el
+                servicio de cada semana. Consulta las fechas de abajo y anótate para servir.
+              </p>
+              {(org.address || org.service_times || org.contact_phone) && (
+                <div className="flex flex-wrap gap-2 text-xs font-semibold text-white/90">
+                  {org.address && (
+                    <span className="bg-white/10 border border-white/20 rounded-full px-3 py-1">📍 {org.address}</span>
+                  )}
+                  {org.service_times && (
+                    <span className="bg-white/10 border border-white/20 rounded-full px-3 py-1">🕐 {org.service_times}</span>
+                  )}
+                  {org.contact_phone && (
+                    <span className="bg-white/10 border border-white/20 rounded-full px-3 py-1">📞 {org.contact_phone}</span>
+                  )}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Link
+                  href={`/login?org=${org.slug}&mode=login`}
+                  className="bg-white text-slate-900 font-bold px-5 py-2.5 rounded-xl text-sm hover:bg-slate-100 transition-colors"
+                >
+                  Ingresar
+                </Link>
+                <Link
+                  href={`/login?org=${org.slug}&mode=register`}
+                  className="bg-slate-900/40 hover:bg-slate-900/60 border border-white/50 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors"
+                >
+                  Crear cuenta
+                </Link>
+              </div>
+            </div>
+            <div className="shrink-0 mx-auto md:mx-0">
+              <img
+                src={org.logo_url || "/logo.png"}
+                alt={`Logo de ${org.name}`}
+                className="w-24 h-24 md:w-32 md:h-32 rounded-3xl border-4 border-white/30 object-cover bg-white/10"
+              />
+            </div>
+          </div>
+        </section>
+      )}
       
       {/* Resumen público de la agenda, conservando el diseño de la versión anterior. */}
       <div className="rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-slate-900 border border-slate-800">

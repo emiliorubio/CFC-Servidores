@@ -261,6 +261,56 @@ export default function ServidoresPage() {
   const assignmentName = (assignment: Assignment) =>
     assignment.manual_name || assignment.profiles?.full_name || "Servidor confirmado";
 
+  const avisoText = () => {
+    if (!activeServiceId) return null;
+    const culto = schedules.find((s) => s.id === activeServiceId);
+    const lines: string[] = [];
+    lines.push(`⛪ SERVICIOS ${(org?.name || "IGLESIA").toUpperCase()}`);
+    if (culto) lines.push(`📅 ${culto.title} — ${formatearFechaCorta(culto.service_date)}`);
+
+    const cubiertas: string[] = [];
+    const faltantes: string[] = [];
+    teams.forEach((t) => {
+      const teamAssigns = assignments.filter((a) => a.team_id === t.id);
+      if (teamAssigns.length > 0) {
+        cubiertas.push(`${t.name}: ${teamAssigns.map(assignmentName).join(", ")}`);
+      } else {
+        faltantes.push(t.name);
+      }
+    });
+
+    if (cubiertas.length > 0) {
+      lines.push("");
+      lines.push("✅ ANOTADO:");
+      lines.push(...cubiertas);
+    }
+    if (faltantes.length > 0) {
+      lines.push("");
+      lines.push(`⚠️ FALTAN SERVIR: ${faltantes.join(", ")}`);
+    } else {
+      lines.push("");
+      lines.push("🎉 ¡Todas las áreas cubiertas!");
+    }
+    return lines.join("\n");
+  };
+
+  const compartirWhatsApp = () => {
+    const text = avisoText();
+    if (!text) return;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const copiarAviso = async () => {
+    const text = avisoText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      window.alert("Aviso copiado. Pégalo en el grupo de WhatsApp para pedir los que faltan.");
+    } catch {
+      window.alert("No se pudo copiar el aviso. Revisa los permisos del portapapeles.");
+    }
+  };
+
   if (orgLoading) {
     return (
       <div className="flex justify-center py-20 text-slate-500 text-sm">
@@ -542,11 +592,39 @@ export default function ServidoresPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-bold text-slate-800">Servidores anotados</h3>
-            {activeServiceId && (
-              <span className="text-[11px] font-semibold text-slate-500">
-                {visibleAssignments.length} confirmado(s)
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {activeServiceId && (
+                <>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {visibleAssignments.length} confirmado(s)
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                      assignments.filter((a) => a.service_id === activeServiceId).length === 0
+                        ? "bg-amber-50 text-amber-800 border-amber-200"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}
+                  >
+                    {teams.filter((t) => assignments.some((a) => a.team_id === t.id)).length}/
+                    {teams.length} áreas cubiertas
+                  </span>
+                </>
+              )}
+              <button
+                onClick={copiarAviso}
+                disabled={!activeServiceId}
+                className="text-[10px] font-bold px-2.5 py-1.5 rounded-xl bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-300 transition-colors"
+              >
+                📋 Copiar aviso
+              </button>
+              <button
+                onClick={compartirWhatsApp}
+                disabled={!activeServiceId}
+                className="text-[10px] font-bold px-2.5 py-1.5 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 transition-colors"
+              >
+                📱 Avisar por WhatsApp
+              </button>
+            </div>
           </div>
 
           {teams.length > 0 && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import RestrictedAccess from "@/components/RestrictedAccess";
@@ -17,31 +17,77 @@ const ADORACION_ROLES = [
   "Secuencias / Multitracks",
   "Sonido / FOH",
   "Plataforma / Apoyo",
-];
+] as const;
+
+interface AdoracionCulto {
+  id: string;
+  title?: string | null;
+  service_type?: string | null;
+  service_date?: string | null;
+  date?: string | null;
+}
+
+interface AdoracionProfile {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+}
+
+interface AdoracionMember {
+  id: string;
+  full_name: string | null;
+  role?: string | null;
+  team_id?: string | null;
+}
+
+interface AdoracionAssignment {
+  id: string;
+  service_id?: string | null;
+  team_id?: string | null;
+  user_id?: string | null;
+  member_id?: string | null;
+  manual_name?: string | null;
+  role_assigned?: string | null;
+  organization_id: string | null;
+  profiles?: { full_name: string } | null;
+  service_schedule_id?: string | null;
+  profile_id?: string | null;
+  user_name?: string | null;
+  area?: string | null;
+}
+
+interface AdoracionSong {
+  id: string;
+  service_schedule_id: string;
+  organization_id: string;
+  title: string;
+  artist?: string | null;
+  key_note?: string | null;
+  song_url?: string | null;
+  created_at?: string;
+}
 
 export default function AdoracionPage() {
   const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
   const [loading, setLoading] = useState(true);
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
 
   // Datos base
-  const [servidores, setServidores] = useState<any[]>([]);
-  const [churchMembers, setChurchMembers] = useState<any[]>([]);
-  const [cultos, setCultos] = useState<any[]>([]);
-  const [teams, setTeams] = useState<any[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [servidores, setServidores] = useState<AdoracionProfile[]>([]);
+  const [churchMembers, setChurchMembers] = useState<AdoracionMember[]>([]);
+  const [cultos, setCultos] = useState<AdoracionCulto[]>([]);
+  const [assignments, setAssignments] = useState<AdoracionAssignment[]>([]);
 
   // ID del equipo de Adoración
   const [adoracionTeamId, setAdoracionTeamId] = useState<string>("");
 
   // Formulario Registro Manual de Músico/Cantante
   const [manualName, setManualName] = useState("");
-  const [manualInstrument, setManualInstrument] = useState(ADORACION_ROLES[0]);
+  const [manualInstrument, setManualInstrument] = useState<string>(ADORACION_ROLES[0]);
   const [manualCultoId, setManualCultoId] = useState("");
 
   // Auto-inscripción (Músico/Cantante App)
   const [selfCultoId, setSelfCultoId] = useState("");
-  const [selfInstrument, setSelfInstrument] = useState(ADORACION_ROLES[0]);
+  const [selfInstrument, setSelfInstrument] = useState<string>(ADORACION_ROLES[0]);
 
   // Gestión de Setlist (Canciones) por Culto con campos completos
   const [selectedCultoForSetlist, setSelectedCultoForSetlist] = useState<string>("");
@@ -49,9 +95,9 @@ export default function AdoracionPage() {
   const [songArtist, setSongArtist] = useState("");
   const [songKey, setSongKey] = useState("");
   const [songUrl, setSongUrl] = useState("");
-  const [setlists, setSetlists] = useState<Record<string, any[]>>({});
+  const [setlists, setSetlists] = useState<Record<string, AdoracionSong[]>>({});
 
-  const formatDateTime = (rawDate: string) => {
+  const formatDateTime = (rawDate?: string | null) => {
     if (!rawDate) return "";
     let clean = rawDate.replace("T", " ");
     if (clean.includes("+")) clean = clean.split("+")[0];
@@ -59,14 +105,8 @@ export default function AdoracionPage() {
     return clean;
   };
 
-  useEffect(() => {
-    if (org?.id) loadAllData();
-  }, [org?.id, userProfile?.id]);
-
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     if (!org?.id) return;
-    setLoading(true);
-    setCurrentUserProfile(userProfile);
 
     // 3. Obtener/Identificar ID del Equipo de Adoración
     const { data: tData } = await supabase
@@ -74,7 +114,6 @@ export default function AdoracionPage() {
       .select("id, name")
       .eq("organization_id", org.id);
     if (tData) {
-      setTeams(tData);
       const adoTeam = tData.find(t => 
         t.name.toLowerCase().includes("adorac") || 
         t.name.toLowerCase().includes("alabanz") || 
@@ -106,13 +145,13 @@ export default function AdoracionPage() {
       .from("profiles")
       .select("id, full_name, role")
       .eq("organization_id", org.id);
-    if (allProfiles) setServidores(allProfiles);
+    if (allProfiles) setServidores(allProfiles as AdoracionProfile[]);
 
     const { data: membersData } = await supabase
       .from("church_members")
       .select("id, full_name, role, team_id")
       .eq("organization_id", org.id);
-    if (membersData) setChurchMembers(membersData);
+    if (membersData) setChurchMembers(membersData as AdoracionMember[]);
 
     // 6. Asignaciones de la Banda
     const { data: assignData } = await supabase
@@ -120,7 +159,7 @@ export default function AdoracionPage() {
       .select("*, profiles(full_name)")
       .eq("organization_id", org.id);
     if (assignData) {
-      setAssignments(assignData.map((assignment: any) => ({
+      setAssignments(assignData.map((assignment: AdoracionAssignment) => ({
         ...assignment,
         service_schedule_id: assignment.service_id,
         profile_id: assignment.user_id,
@@ -135,16 +174,23 @@ export default function AdoracionPage() {
       ? await supabase.from("service_songs").select("*").eq("organization_id", org.id).in("service_schedule_id", serviceIds).order("created_at", { ascending: true })
       : { data: [] };
     if (songsData) {
-      const grouped = songsData.reduce((acc: any, song: any) => {
+      const grouped = songsData.reduce((acc: Record<string, AdoracionSong[]>, song: AdoracionSong) => {
         acc[song.service_schedule_id] = acc[song.service_schedule_id] || [];
         acc[song.service_schedule_id].push(song);
         return acc;
-      }, {});
+      }, {} as Record<string, AdoracionSong[]>);
       setSetlists(grouped);
     }
 
     setLoading(false);
-  };
+  }, [org]);
+
+  useEffect(() => {
+    if (org?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial del ministerio de adoración
+      loadAllData();
+    }
+  }, [org?.id, loadAllData]);
 
   const isLiderOrAdmin = userRole === "lider" || userRole === "admin" || userRole === "superadmin";
 
@@ -281,7 +327,7 @@ export default function AdoracionPage() {
               <h1 className="text-2xl font-bold text-white">Ministerio de Adoración</h1>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Hola, <strong className="text-amber-400">{currentUserProfile?.full_name}</strong> — Coordinación de Alabanza y Músicos
+              Hola, <strong className="text-amber-400">{userProfile?.full_name}</strong> — Coordinación de Alabanza y Músicos
             </p>
           </div>
 
@@ -458,11 +504,11 @@ export default function AdoracionPage() {
                         ) : (
                           <div className="grid gap-1.5">
                             {bandMembers.map((asgn) => {
-                              const isMe = asgn.profile_id === currentUserProfile?.id;
+                              const isMe = asgn.profile_id === userProfile?.id;
                               let personName = asgn.user_name;
 
                               if (!personName) {
-                                if (isMe) personName = currentUserProfile?.full_name;
+                                if (isMe) personName = userProfile?.full_name;
                                 else {
                                   const prof = servidores.find(s => s.id === asgn.profile_id);
                                   const mem = churchMembers.find(m => m.id === asgn.member_id);
@@ -502,7 +548,7 @@ export default function AdoracionPage() {
                         <div className="mt-4 border-t border-slate-800/60 pt-3">
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">🎶 Setlist / Canciones:</p>
                           <div className="space-y-1.5">
-                            {currentSetlist.map((song: any, idx: number) => (
+                            {currentSetlist.map((song, idx) => (
                               <div key={idx} className="flex justify-between items-center text-xs bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-slate-200">
                                 <div className="space-y-0.5">
                                   <p className="font-semibold">

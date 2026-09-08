@@ -4,17 +4,23 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
+import type { User } from "@supabase/supabase-js";
 import { usePathname, useRouter } from "next/navigation";
 import { OrganizationProvider, useOrganization } from "@/context/OrganizationContext";
 import "./globals.css";
+
+interface AuthProfile {
+  full_name: string | null;
+  role: string | null;
+}
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { org, userRole, loading: orgLoading } = useOrganization();
 
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
@@ -67,7 +73,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const isLiderOrAdmin = isAdmin || userRole === "lider";
 
   // Formateador preciso de Rol
-  const formatRole = (role?: string) => {
+  const formatRole = (role?: string | null) => {
     const activeRole = role || userRole;
     if (!activeRole) return "Servidor";
     const cleanRole = activeRole.toLowerCase().trim();
@@ -135,9 +141,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-3.5 group">
             <div className="relative w-11 h-11 bg-slate-950/50 p-1 rounded-2xl border border-white/10 flex items-center justify-center shadow-inner overflow-hidden">
               {org?.logo_url ? (
-                <img
+                <Image
                   src={org.logo_url}
                   alt={org.name}
+                  width={44}
+                  height={44}
+                  unoptimized
                   className="w-full h-full object-cover rounded-xl"
                 />
               ) : (

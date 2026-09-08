@@ -57,8 +57,8 @@ export default function AuthPage() {
 
       router.push("/");
       router.refresh();
-    } catch (err: any) {
-      setErrorMsg(err.message || "Ocurrió un error en la autenticación");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Ocurrió un error en la autenticación");
     } finally {
       setLoading(false);
     }

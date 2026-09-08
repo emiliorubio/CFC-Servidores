@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { useOrganization } from "@/context/OrganizationContext";
+import type { Organization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
 import RestrictedAccess from "@/components/RestrictedAccess";
 
@@ -11,13 +13,15 @@ interface MinistryTeam {
   role_needed: string;
 }
 
-export default function ConfiguracionPage() {
-  const { org, userRole, loading: orgLoading } = useOrganization();
+function errorMessage(err: unknown) {
+  return err instanceof Error ? err.message : String(err);
+}
 
-  const [name, setName] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("#4F46E5");
-  const [secondaryColor, setSecondaryColor] = useState("#0F172A");
-  const [logoUrl, setLogoUrl] = useState("");
+function ConfigureOrgForm({ org }: { org: Organization }) {
+  const [name, setName] = useState(org.name || "");
+  const [primaryColor, setPrimaryColor] = useState(org.primary_color || "#4F46E5");
+  const [secondaryColor, setSecondaryColor] = useState(org.secondary_color || "#0F172A");
+  const [logoUrl, setLogoUrl] = useState(org.logo_url || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -26,25 +30,11 @@ export default function ConfiguracionPage() {
   const [teamRole, setTeamRole] = useState("Servidor");
   const [savingTeam, setSavingTeam] = useState(false);
 
-  useEffect(() => {
-    if (org) {
-      setName(org.name || "");
-      setPrimaryColor(org.primary_color || "#4F46E5");
-      setSecondaryColor(org.secondary_color || "#0F172A");
-      setLogoUrl(org.logo_url || "");
-    }
-  }, [org]);
-
-  useEffect(() => {
-    if (org?.id) loadTeams(org.id);
-    else setTeams([]);
-  }, [org?.id]);
-
-  const loadTeams = async (organizationId: string) => {
+  const loadTeams = useCallback(async () => {
     const { data, error } = await supabase
       .from("ministry_teams")
       .select("id, name, role_needed")
-      .eq("organization_id", organizationId)
+      .eq("organization_id", org.id)
       .order("name");
 
     if (error) {
@@ -52,11 +42,16 @@ export default function ConfiguracionPage() {
       return;
     }
     setTeams(data || []);
-  };
+  }, [org.id]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de equipos al montar
+    loadTeams();
+  }, [loadTeams]);
 
   const handleAddTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!org?.id || !teamName.trim()) return;
+    if (!teamName.trim()) return;
 
     setSavingTeam(true);
     setMessage(null);
@@ -71,14 +66,13 @@ export default function ConfiguracionPage() {
     } else {
       setTeamName("");
       setTeamRole("Servidor");
-      await loadTeams(org.id);
+      await loadTeams();
       setMessage({ type: "success", text: "Equipo creado correctamente." });
     }
     setSavingTeam(false);
   };
 
   const handleDeleteTeam = async (team: MinistryTeam) => {
-    if (!org?.id) return;
     const { error } = await supabase
       .from("ministry_teams")
       .delete()
@@ -89,7 +83,7 @@ export default function ConfiguracionPage() {
       setMessage({ type: "error", text: "No se pudo eliminar el equipo: " + error.message });
       return;
     }
-    await loadTeams(org.id);
+    await loadTeams();
   };
 
   // Función para subir logo a Supabase Storage
@@ -101,7 +95,7 @@ export default function ConfiguracionPage() {
       if (!e.target.files || e.target.files.length === 0) return;
       const file = e.target.files[0];
       const fileExt = file.name.split(".").pop();
-      const filePath = `${org?.slug || "default"}/logo.${fileExt}`;
+      const filePath = `${org.slug || "default"}/logo.${fileExt}`;
 
       // Subir imagen al bucket 'organizations'
       const { error: uploadError } = await supabase.storage
@@ -114,8 +108,8 @@ export default function ConfiguracionPage() {
       const { data } = supabase.storage.from("organizations").getPublicUrl(filePath);
       setLogoUrl(data.publicUrl);
       setMessage({ type: "success", text: "Logo subido correctamente (recuerda guardar cambios)." });
-    } catch (error: any) {
-      setMessage({ type: "error", text: "Error al subir logo: " + error.message });
+    } catch (error) {
+      setMessage({ type: "error", text: "Error al subir logo: " + errorMessage(error) });
     } finally {
       setUploading(false);
     }
@@ -124,7 +118,6 @@ export default function ConfiguracionPage() {
   // Guardar cambios en la base de datos
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!org?.id) return;
 
     try {
       setSaving(true);
@@ -145,27 +138,12 @@ export default function ConfiguracionPage() {
       setMessage({ type: "success", text: "¡Configuración de la iglesia actualizada con éxito!" });
       // Recargar la página para refrescar los estilos aplicados
       setTimeout(() => window.location.reload(), 1000);
-    } catch (error: any) {
-      setMessage({ type: "error", text: "Error al guardar: " + error.message });
+    } catch (error) {
+      setMessage({ type: "error", text: "Error al guardar: " + errorMessage(error) });
     } finally {
       setSaving(false);
     }
   };
-
-  if (orgLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-slate-600 font-medium">Cargando configuración...</p>
-      </div>
-    );
-  }
-
-  const isAdmin = userRole === "admin" || userRole === "superadmin";
-  if (!isAdmin || !org) {
-    return (
-      <RestrictedAccess message="La configuración de la iglesia está disponible únicamente para administradores con una iglesia asignada." />
-    );
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -178,7 +156,7 @@ export default function ConfiguracionPage() {
           </span>
           <h1 className="text-3xl font-extrabold tracking-tight">⚙️ Configuración de la Iglesia</h1>
           <p className="text-sm text-slate-300">
-            Personaliza la identidad visual y datos principales de <strong>{org?.name}</strong>.
+            Personaliza la identidad visual y datos principales de <strong>{org.name}</strong>.
           </p>
         </div>
 
@@ -215,7 +193,7 @@ export default function ConfiguracionPage() {
             <label className="block text-sm font-bold text-slate-700">Logo Oficial</label>
             <div className="flex items-center gap-4">
               {logoUrl ? (
-                <img src={logoUrl} alt="Logo" className="w-16 h-16 rounded-2xl object-cover border border-slate-200" />
+                <Image src={logoUrl} alt="Logo" width={64} height={64} unoptimized className="w-16 h-16 rounded-2xl object-cover border border-slate-200" />
               ) : (
                 <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-bold border border-slate-200">
                   Sin Logo
@@ -293,7 +271,7 @@ export default function ConfiguracionPage() {
           <div>
             <h2 className="text-lg font-bold text-slate-800">Áreas y equipos de servicio</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Estos equipos pertenecen solo a <strong>{org?.name}</strong> y se usan para las inscripciones.
+              Estos equipos pertenecen solo a <strong>{org.name}</strong> y se usan para las inscripciones.
             </p>
           </div>
 
@@ -348,4 +326,25 @@ export default function ConfiguracionPage() {
       </div>
     </div>
   );
+}
+
+export default function ConfiguracionPage() {
+  const { org, userRole, loading: orgLoading } = useOrganization();
+
+  if (orgLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-slate-600 font-medium">Cargando configuración...</p>
+      </div>
+    );
+  }
+
+  const isAdmin = userRole === "admin" || userRole === "superadmin";
+  if (!isAdmin || !org) {
+    return (
+      <RestrictedAccess message="La configuración de la iglesia está disponible únicamente para administradores con una iglesia asignada." />
+    );
+  }
+
+  return <ConfigureOrgForm key={org.id} org={org} />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export interface Organization {
@@ -64,14 +64,8 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      setLoading(true);
-
       // 1. Obtener sesión de usuario
       const { data: { session } } = await supabase.auth.getSession();
 
@@ -137,7 +131,12 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inicializa la sesión y organización al montar
+    loadData();
+  }, [loadData]);
 
   const switchOrganization = (orgId: string) => {
     const target = allOrgs.find((o) => o.id === orgId);

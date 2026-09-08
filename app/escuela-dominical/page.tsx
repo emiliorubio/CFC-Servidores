@@ -1,30 +1,60 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import RestrictedAccess from "@/components/RestrictedAccess";
 
+interface EscuelaCulto {
+  id: string;
+  title?: string | null;
+  service_type?: string | null;
+  service_date?: string | null;
+  date?: string | null;
+  time?: string | null;
+  start_time?: string | null;
+  service_time?: string | null;
+  hora?: string | null;
+}
+
+interface EscuelaAssignment {
+  id: string;
+  service_id: string;
+  team_id?: string | null;
+  user_id?: string | null;
+  manual_name?: string | null;
+  role_assigned?: string | null;
+  organization_id: string;
+  profiles?: { full_name: string } | null;
+  service_schedule_id?: string | null;
+  displayName: string;
+  resolvedArea: string;
+}
+
+interface EscuelaLesson {
+  id: string;
+  service_schedule_id: string;
+  organization_id: string;
+  group_name: string;
+  topic: string;
+  material_url?: string | null;
+}
+
 export default function EscuelaDominicalPage() {
   const { org, userRole, loading: orgLoading } = useOrganization();
-  const [cultos, setCultos] = useState<any[]>([]);
+  const [cultos, setCultos] = useState<EscuelaCulto[]>([]);
   const [selectedCulto, setSelectedCulto] = useState<string>("");
   const [groupName, setGroupName] = useState("Párvulos (3-6 años)");
   const [topic, setTopic] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [lessons, setLessons] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<EscuelaAssignment[]>([]);
+  const [lessons, setLessons] = useState<EscuelaLesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (org?.id) fetchInitialData();
-  }, [org?.id]);
-
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     if (!org?.id) return;
-    setLoading(true);
 
     // 1. Cultos
     const { data: serviceData } = await supabase
@@ -47,7 +77,7 @@ export default function EscuelaDominicalPage() {
       .eq("organization_id", org.id);
 
     if (serviceData && serviceData.length > 0) {
-      setCultos(serviceData);
+      setCultos(serviceData as EscuelaCulto[]);
       setSelectedCulto(serviceData[0].id);
     }
 
@@ -64,16 +94,23 @@ export default function EscuelaDominicalPage() {
 
         return { ...asgn, service_schedule_id: asgn.service_id, displayName: name, resolvedArea: areaName };
       });
-      setAssignments(enrichedAssignments);
+      setAssignments(enrichedAssignments as EscuelaAssignment[]);
     }
 
-    if (lessonData) setLessons(lessonData);
+    if (lessonData) setLessons(lessonData as EscuelaLesson[]);
 
     setLoading(false);
-  };
+  }, [org]);
+
+  useEffect(() => {
+    if (org?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de clases y lecciones
+      fetchInitialData();
+    }
+  }, [org?.id, fetchInitialData]);
 
   // Formateador de Fecha limpia
-  const formatCleanDate = (culto: any) => {
+  const formatCleanDate = (culto: EscuelaCulto) => {
     const dateStr = culto.service_date || culto.date;
     if (!dateStr) return "Fecha por confirmar";
 
@@ -96,7 +133,7 @@ export default function EscuelaDominicalPage() {
   };
 
   // Formateador de Hora corregido
-  const formatCleanTime = (culto: any) => {
+  const formatCleanTime = (culto: EscuelaCulto) => {
     const explicitTime = culto.service_time || culto.time || culto.start_time || culto.hora;
     if (explicitTime) {
       const [hh, mm] = explicitTime.split(":");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
@@ -57,20 +57,7 @@ export default function ServidoresPage() {
 
   const [selectedFilterArea, setSelectedFilterArea] = useState("all");
 
-  useEffect(() => {
-    if (org?.id) {
-      fetchSchedules();
-      fetchTeams();
-    }
-  }, [org]);
-
-  useEffect(() => {
-    if (activeServiceId && org?.id) {
-      fetchDataForService(activeServiceId);
-    }
-  }, [activeServiceId, org]);
-
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     if (!org?.id) return;
     try {
       const { data, error } = await supabase
@@ -83,16 +70,16 @@ export default function ServidoresPage() {
       setSchedules(data || []);
 
       if (data && data.length > 0) {
-        if (!activeServiceId) setActiveServiceId(data[0].id);
+        setActiveServiceId((prev) => prev || data[0].id);
         setManualServiceId(data[0].id);
         setSelfServiceId(data[0].id);
       }
     } catch (err) {
       console.error("Error al cargar servicios:", err);
     }
-  };
+  }, [org]);
 
-  const fetchTeams = async () => {
+  const fetchTeams = useCallback(async () => {
     if (!org?.id) return;
     try {
       const { data, error } = await supabase
@@ -110,10 +97,9 @@ export default function ServidoresPage() {
     } catch (err) {
       console.error("Error al cargar equipos:", err);
     }
-  };
+  }, [org]);
 
-  const fetchDataForService = async (serviceId: string) => {
-    setLoading(true);
+  const fetchDataForService = useCallback(async (serviceId: string) => {
     try {
       const { data: assignData, error: assignError } = await supabase
         .from("service_assignments")
@@ -127,7 +113,22 @@ export default function ServidoresPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (org?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de cultos y equipos al montar
+      fetchSchedules();
+      fetchTeams();
+    }
+  }, [org?.id, fetchSchedules, fetchTeams]);
+
+  useEffect(() => {
+    if (activeServiceId && org?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga de asignaciones del culto seleccionado
+      fetchDataForService(activeServiceId);
+    }
+  }, [activeServiceId, org?.id, fetchDataForService]);
 
   // Inscripción Manual (Líderes)
   const handleManualSignUp = async (e: React.FormEvent) => {
@@ -151,8 +152,8 @@ export default function ServidoresPage() {
       setManualName("");
       setActiveServiceId(manualServiceId);
       await fetchDataForService(manualServiceId);
-    } catch (err: any) {
-      alert("Error al anotar hermano: " + err.message);
+    } catch (err) {
+      alert("Error al anotar hermano: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setProcessing(false);
     }
@@ -182,8 +183,8 @@ export default function ServidoresPage() {
       if (error) throw error;
       setActiveServiceId(selfServiceId);
       await fetchDataForService(selfServiceId);
-    } catch (err: any) {
-      alert("Error al inscribirse: " + err.message);
+    } catch (err) {
+      alert("Error al inscribirse: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setProcessing(false);
     }
@@ -209,8 +210,8 @@ export default function ServidoresPage() {
       setNewCultoTitle("");
       setNewCultoDate("");
       fetchSchedules();
-    } catch (err: any) {
-      alert("Error al crear culto: " + err.message);
+    } catch (err) {
+      alert("Error al crear culto: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setProcessing(false);
     }

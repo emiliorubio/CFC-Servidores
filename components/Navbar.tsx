@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useOrganization } from "@/context/OrganizationContext";
 
 export default function Navbar() {
@@ -19,9 +20,12 @@ export default function Navbar() {
         {/* LOGO Y NOMBRE DE LA IGLESIA */}
         <div className="flex items-center gap-3">
           {org?.logo_url ? (
-            <img
+            <Image
               src={org.logo_url}
               alt={org.name}
+              width={40}
+              height={40}
+              unoptimized
               className="w-10 h-10 rounded-xl object-cover bg-white"
             />
           ) : (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import Link from "next/link";
@@ -25,18 +25,9 @@ export default function HomePage() {
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (org?.id) {
-      fetchSchedules();
-    } else {
-      setLoading(false);
-    }
-  }, [org, orgLoading]);
-
   // Cargar cultos filtrados por la iglesia activa
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     if (!org?.id) return;
-    setLoading(true);
     try {
       const { data, error } = await supabase
         .from("service_schedules")
@@ -51,7 +42,14 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [org]);
+
+  useEffect(() => {
+    if (org?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de cultos al montar
+      fetchSchedules();
+    }
+  }, [org?.id, fetchSchedules]);
 
   const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,8 +73,8 @@ export default function HomePage() {
       setServiceDate("");
       setDescription("");
       fetchSchedules();
-    } catch (err: any) {
-      alert("Error al guardar culto: " + err.message);
+    } catch (err) {
+      alert("Error al guardar culto: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSaving(false);
     }
@@ -85,7 +83,7 @@ export default function HomePage() {
   const isAdminOrLider = userRole === "admin" || userRole === "superadmin" || userRole === "lider";
   const orgName = org?.name || "tu iglesia";
 
-  if (loading || orgLoading) {
+  if (orgLoading || (loading && org?.id)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <div className="w-8 h-8 border-4 border-slate-800 border-t-transparent rounded-full animate-spin"></div>

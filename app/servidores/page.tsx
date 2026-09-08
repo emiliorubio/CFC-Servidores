@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
+import { formatearFechaCorta } from "@/lib/format";
 
 interface ServiceSchedule {
   id: string;
@@ -231,11 +232,10 @@ export default function ServidoresPage() {
 
     setProcessing(true);
     try {
-      const fullDate = `${newCultoDate}T${newCultoTime}:00`;
       const { error } = await supabase.from("service_schedules").insert([
         {
           title: newCultoTitle,
-          service_date: fullDate,
+          service_date: new Date(`${newCultoDate}T${newCultoTime || "10:00"}:00`).toISOString(),
           organization_id: org.id,
         },
       ]);
@@ -313,7 +313,7 @@ export default function ServidoresPage() {
                 ) : (
                   schedules.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.title} ({new Date(s.service_date).toLocaleDateString("es-CL")})
+{s.title} ({formatearFechaCorta(s.service_date)})
                     </option>
                   ))
                 )}
@@ -377,7 +377,7 @@ export default function ServidoresPage() {
                     {culto?.title || "Culto"}
                     <span className="text-slate-400 font-semibold">
                       {" "}
-                      ({culto ? new Date(culto.service_date).toLocaleDateString("es-CL") : ""})
+                      ({culto ? formatearFechaCorta(culto.service_date) : ""})
                     </span>
                   </p>
                   <span className="text-[10px] font-bold text-sky-700 bg-sky-100 border border-sky-200 px-2 py-0.5 rounded-md">
@@ -417,7 +417,7 @@ export default function ServidoresPage() {
               ) : (
                 schedules.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.title} ({new Date(s.service_date).toLocaleDateString("es-CL")})
+                    {s.title} ({formatearFechaCorta(s.service_date)})
                   </option>
                 ))
               )}

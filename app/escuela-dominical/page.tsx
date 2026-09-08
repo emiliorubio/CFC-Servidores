@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
+import { formatearFechaCulto, horaCulto } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
 
 interface EscuelaCulto {
@@ -109,52 +110,19 @@ export default function EscuelaDominicalPage() {
     }
   }, [org?.id, fetchInitialData]);
 
-  // Formateador de Fecha limpia
-  const formatCleanDate = (culto: EscuelaCulto) => {
-    const dateStr = culto.service_date || culto.date;
-    if (!dateStr) return "Fecha por confirmar";
+  // Formateador de Fecha (compartido con el Inicio para que SIEMPRE coincidan)
+  const formatCleanDate = (culto: EscuelaCulto) =>
+    formatearFechaCulto(culto.service_date || culto.date);
 
-    const rawDate = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.split(" ")[0];
-    const parts = rawDate.split("-");
-    if (parts.length < 3) return dateStr;
-
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-
-    const dateObj = new Date(year, month, day);
-    const formatted = dateObj.toLocaleDateString("es-ES", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
-
-    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
-  };
-
-  // Formateador de Hora corregido
+  // Formateador de Hora (compartido con el Inicio)
   const formatCleanTime = (culto: EscuelaCulto) => {
+    const hora = horaCulto(culto.service_date || culto.date);
+    if (hora) return hora;
     const explicitTime = culto.service_time || culto.time || culto.start_time || culto.hora;
     if (explicitTime) {
       const [hh, mm] = explicitTime.split(":");
       if (hh && mm) return `${hh}:${mm} hrs`;
     }
-
-    const dateStr = culto.service_date || culto.date || "";
-    if (dateStr.includes("T")) {
-      const timePart = dateStr.split("T")[1];
-      if (timePart && !timePart.startsWith("00:00")) {
-        const [hh, mm] = timePart.split(":");
-        if (hh && mm) return `${hh}:${mm} hrs`;
-      }
-    } else if (dateStr.includes(" ")) {
-      const timePart = dateStr.split(" ")[1];
-      if (timePart && !timePart.startsWith("00:00")) {
-        const [hh, mm] = timePart.split(":");
-        if (hh && mm) return `${hh}:${mm} hrs`;
-      }
-    }
-
     return "Por confirmar";
   };
 

@@ -9,6 +9,45 @@ interface PatronSlot {
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+/** Lee un instante y devuelve sus componentes en hora de Chile (America/Santiago). */
+function parseEnSantiago(instant: number): {
+  y: number;
+  m: number;
+  d: number;
+  hh: number;
+  mm: number;
+} {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const [fecha, hora] = fmt.format(new Date(instant)).split(", ");
+  const [mes, dia, anio] = fecha.split("/").map(Number);
+  let horaInt = Number(hora.slice(0, 2));
+  const minuto = Number(hora.slice(3, 5));
+  if (horaInt === 24) horaInt = 0;
+  return { y: anio, m: mes - 1, d: dia, hh: horaInt, mm: minuto };
+}
+
+/**
+ * Conversión de una hora LOCAL de Santiago a UTC. Como Chile usa horario de
+ * verano (UTC-4/UTC-3), se calcula con Intl para que cada culto quede en el
+ * instante correcto sin importar el huso horario del servidor (Vercel = UTC).
+ */
+function santiagoLocalToUtc(y: number, m: number, d: number, hh: number, mm: number): number {
+  const primera = Date.UTC(y, m, d, hh, mm);
+  const p = parseEnSantiago(primera);
+  if (p.y === y && p.m === m && p.d === d && p.hh === hh && p.mm === mm) {
+    return primera;
+  }
+  return Date.UTC(p.y, p.m, p.d, p.hh, p.mm);
+}
+
 export async function POST(request: NextRequest) {
   const token = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token || !url || !anonKey) {
@@ -48,40 +87,47 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Rango: desde hoy (local) hasta el último día del mes + cantidad.
-  const hoy = new Date();
-  const fin = new Date(hoy.getFullYear(), hoy.getMonth() + cantidad + 1, 0);
+  // Hoy y fin del período en hora de Chile.
+  const hoyLocal = parseEnSantiago(Date.now());
+  const fin = new Date(
+    santiagoLocalToUtc(
+      hoyLocal.y,
+      hoyLocal.m + cantidad + 1,
+      0,
+      12,
+      0
+    )
+  );
 
   const fechasAProgramar: string[] = [];
-  for (let d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()); d <= fin; d.setDate(d.getDate() + 1)) {
-    const slot = patron.find((p) => p.weekday === d.getDay());
-    if (!slot || !slot.time) continue;
+  for (let d = new Date(hoyLocal.y, hoyLocal.m, hoyLocal.d); d <= fin; d.setDate(d.getDate() + 1)) {
     const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    fechasAProgramar.push(`${y}-${m}-${day}T${slot.time}:00`);
+    const m = d.getMonth();
+    const day = d.getDate();
+    const weekday = new Date(y, m, day).getDay();
+    const slot = patron.find((p) => p.weekday === weekday);
+    if (!slot || !slot.time) continue;
+    const [hh, mm] = slot.time.split(":").map(Number);
+    fechasAProgramar.push(new Date(santiagoLocalToUtc(y, m, day, hh, mm)).toISOString());
   }
 
   if (fechasAProgramar.length === 0) {
     return NextResponse.json({ error: "No hay fechas que programar en este período." }, { status: 400 });
   }
 
-  // No duplicar: consultamos las fechas ya existentes en el rango.
-  const rangoDesde = `${fechasAProgramar[0].split("T")[0]}`;
-  const rangoHasta = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, "0")}-${String(fin.getDate()).padStart(2, "0")}`;
+  // No duplicar: cargamos las fechas existentes de la iglesia y comparamos por
+  // los primeros 16 caracteres del instante ("YYYY-MM-DDTHH:MM").
   const { data: existentesData, error: existentesError } = await supabase
     .from("service_schedules")
     .select("service_date")
-    .eq("organization_id", org.id)
-    .gte("service_date", `${rangoDesde}T00:00:00`)
-    .lte("service_date", `${rangoHasta}T23:59:59`);
+    .eq("organization_id", org.id);
 
   if (existentesError) {
     return NextResponse.json({ error: "No se pudo verificar los cultos existentes." }, { status: 500 });
   }
 
   const existentes = new Set((existentesData || []).map((s) => String(s.service_date).slice(0, 16)));
-  const nuevos = fechasAProgramar.filter((f) => !existentes.has(f));
+  const nuevos = fechasAProgramar.filter((f) => !existentes.has(f.slice(0, 16)));
 
   if (nuevos.length === 0) {
     return NextResponse.json({

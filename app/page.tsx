@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
+import { formatearFechaCulto, horaCulto } from "@/lib/format";
 import Link from "next/link";
 
 interface ServiceSchedule {
@@ -35,8 +36,12 @@ export default function HomePage() {
   const [showModal, setShowModal] = useState(false);
   const [title, setTitle] = useState("Culto Dominical");
   const [serviceDate, setServiceDate] = useState("");
+  const [serviceTime, setServiceTime] = useState("10:00");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Eliminar un culto (solo admin / pastor)
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Generación automática de cultos según el horario de la iglesia
   const [generating, setGenerating] = useState<number | null>(null);
@@ -126,10 +131,12 @@ export default function HomePage() {
 
     setSaving(true);
     try {
+      // Guardar la hora como instante correcto en la zona local del usuario.
+      const serviceDateInstant = new Date(`${serviceDate}T${serviceTime || "10:00"}:00`).toISOString();
       const { error } = await supabase.from("service_schedules").insert([
         {
           title,
-          service_date: serviceDate,
+          service_date: serviceDateInstant,
           description,
           organization_id: org.id,
         },
@@ -140,6 +147,7 @@ export default function HomePage() {
       setShowModal(false);
       setTitle("Culto Dominical");
       setServiceDate("");
+      setServiceTime("10:00");
       setDescription("");
       setReloadKey((k) => k + 1);
     } catch (err) {
@@ -151,9 +159,31 @@ export default function HomePage() {
 
   const isAdminOrLider =
     userRole === "admin" || userRole === "superadmin" || userRole === "lider" || userRole === "pastor";
+  const canDeleteCulto =
+    userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   const orgName = org?.name || "tu iglesia";
 
   const shortTeamName = (name: string) => name.split("(")[0].trim();
+
+  const handleDeleteSchedule = async (schedule: ServiceSchedule) => {
+    if (!org?.id || !canDeleteCulto) return;
+    const ok = confirm(
+      `¿Eliminar "${schedule.title}" de ${formatearFechaCulto(schedule.service_date)}? Esta acción no se puede deshacer.`
+    );
+    if (!ok) return;
+    setDeletingId(schedule.id);
+    const { error } = await supabase
+      .from("service_schedules")
+      .delete()
+      .eq("id", schedule.id)
+      .eq("organization_id", org.id);
+    setDeletingId(null);
+    if (error) {
+      alert("No se pudo eliminar el culto: " + error.message);
+      return;
+    }
+    setReloadKey((k) => k + 1);
+  };
 
   const assignmentCounts = (serviceId: string) => {
     const grouped = assignments.filter((a) => a.service_id === serviceId);
@@ -253,16 +283,26 @@ export default function HomePage() {
                 className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
               >
                 <div className="space-y-3">
-                  <div>
+                  <div className="flex justify-between items-start gap-2">
                     <h3 className="text-base font-bold text-slate-800">{schedule.title}</h3>
-                    <p className="text-xs text-indigo-600 font-semibold mt-1">
-                      🗓️ {new Date(schedule.service_date).toLocaleDateString("es-CL", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      })}
-                    </p>
+                    {canDeleteCulto && (
+                      <button
+                        onClick={() => handleDeleteSchedule(schedule)}
+                        disabled={deletingId === schedule.id}
+                        title="Eliminar culto"
+                        className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0"
+                      >
+                        {deletingId === schedule.id ? "..." : "🗑️"}
+                      </button>
+                    )}
                   </div>
+                  <p className="text-xs text-indigo-600 font-semibold mt-1">
+                    🗓️ {formatearFechaCulto(schedule.service_date)}
+                    {horaCulto(schedule.service_date) && (
+                      <span className="text-indigo-400"> — ⏰ {horaCulto(schedule.service_date)}</span>
+                    )}
+                  </p>
+
                   {schedule.description && (
                     <p className="text-xs text-slate-500 line-clamp-2">{schedule.description}</p>
                   )}
@@ -357,6 +397,16 @@ export default function HomePage() {
                   required
                   value={serviceDate}
                   onChange={(e) => setServiceDate(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Hora del Servicio</label>
+                <input
+                  type="time"
+                  value={serviceTime}
+                  onChange={(e) => setServiceTime(e.target.value)}
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
                 />
               </div>

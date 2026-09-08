@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
+import { formatearFechaCulto, horaCulto } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
 
 // Roles específicos del Ministerio de Adoración
@@ -71,24 +72,11 @@ interface AdoracionSong {
 }
 
 function cultoDetalle(culto: AdoracionCulto) {
-  const raw = culto.service_date || culto.date || "";
-  const d = new Date(raw);
-  const fecha = isNaN(d.getTime())
-    ? raw || "Fecha por confirmar"
-    : d.toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" });
-
-  let hora = "";
+  const raw = culto.service_date || culto.date || null;
+  let hora = horaCulto(raw).replace(/\s?hrs$/, "");
   const explicit = culto.time || culto.start_time || culto.service_time;
-  if (explicit) hora = explicit.slice(0, 5);
-  else if (raw.includes("T")) {
-    const t = raw.split("T")[1];
-    if (t && !t.startsWith("00:00")) hora = t.slice(0, 5);
-  } else if (raw.includes(" ")) {
-    const t = raw.split(" ")[1];
-    if (t && !t.startsWith("00:00")) hora = t.slice(0, 5);
-  }
-
-  return { fecha: fecha.charAt(0).toUpperCase() + fecha.slice(1), hora };
+  if (!hora && explicit) hora = explicit.slice(0, 5);
+  return { fecha: formatearFechaCulto(raw), hora };
 }
 
 export default function AdoracionPage() {

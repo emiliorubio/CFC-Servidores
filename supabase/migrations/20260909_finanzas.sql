@@ -46,19 +46,23 @@ alter table public.transacciones enable row level security;
 -- ============================================================
 -- 3. POLÍTICAS RLS (solo roles financieros de la iglesia)
 -- ============================================================
+drop policy if exists "transacciones_select_finanzas" on public.transacciones;
 create policy "transacciones_select_finanzas" on public.transacciones
   for select to authenticated
   using (public.can_manage_finanzas(organization_id));
 
+drop policy if exists "transacciones_insert_finanzas" on public.transacciones;
 create policy "transacciones_insert_finanzas" on public.transacciones
   for insert to authenticated
   with check (public.can_manage_finanzas(organization_id));
 
+drop policy if exists "transacciones_update_finanzas" on public.transacciones;
 create policy "transacciones_update_finanzas" on public.transacciones
   for update to authenticated
   using (public.can_manage_finanzas(organization_id))
   with check (public.can_manage_finanzas(organization_id));
 
+drop policy if exists "transacciones_delete_finanzas" on public.transacciones;
 create policy "transacciones_delete_finanzas" on public.transacciones
   for delete to authenticated
   using (public.can_manage_finanzas(organization_id));

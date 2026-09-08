@@ -13,9 +13,22 @@ interface ServiceSchedule {
   organization_id: string;
 }
 
+interface MinistryTeam {
+  id: string;
+  name: string;
+}
+
+interface ServiceAssignment {
+  id: string;
+  service_id: string;
+  team_id: string | null;
+}
+
 export default function HomePage() {
   const { org, userRole, loading: orgLoading } = useOrganization();
   const [schedules, setSchedules] = useState<ServiceSchedule[]>([]);
+  const [teams, setTeams] = useState<MinistryTeam[]>([]);
+  const [assignments, setAssignments] = useState<ServiceAssignment[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Formulario para crear un nuevo culto
@@ -83,6 +96,19 @@ export default function HomePage() {
 
         if (error) throw error;
         if (active) setSchedules(data || []);
+
+        // Datos vivos: áreas y confirmados por culto
+        const { data: teamsData } = await supabase
+          .from("ministry_teams")
+          .select("id, name")
+          .eq("organization_id", org.id);
+        if (active) setTeams(teamsData || []);
+
+        const { data: assignData } = await supabase
+          .from("service_assignments")
+          .select("id, service_id, team_id")
+          .eq("organization_id", org.id);
+        if (active) setAssignments(assignData || []);
       } catch (err) {
         console.error("Error al cargar los servicios:", err);
       } finally {
@@ -126,6 +152,17 @@ export default function HomePage() {
   const isAdminOrLider =
     userRole === "admin" || userRole === "superadmin" || userRole === "lider" || userRole === "pastor";
   const orgName = org?.name || "tu iglesia";
+
+  const shortTeamName = (name: string) => name.split("(")[0].trim();
+
+  const assignmentCounts = (serviceId: string) => {
+    const grouped = assignments.filter((a) => a.service_id === serviceId);
+    const perTeam = teams
+      .map((t) => ({ team: t, count: grouped.filter((a) => a.team_id === t.id).length }))
+      .filter((x) => x.count > 0);
+    const missing = teams.filter((t) => !grouped.some((a) => a.team_id === t.id));
+    return { total: grouped.length, perTeam, missing };
+  };
 
   if (orgLoading || (loading && org?.id)) {
     return (
@@ -244,6 +281,34 @@ export default function HomePage() {
                       <p className="text-[11px] text-amber-600/70 italic mt-1">Lecciones y profesores por confirmar.</p>
                     </div>
                   </div>
+
+                  {(() => {
+                    const { total, perTeam, missing } = assignmentCounts(schedule.id);
+                    return (
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 text-slate-700 rounded-full border border-slate-200">
+                          👥 {total} confirmado{total !== 1 ? "s" : ""}
+                        </span>
+                        {perTeam.map(({ team, count }) => (
+                          <span
+                            key={team.id}
+                            className="text-[10px] font-bold px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200"
+                          >
+                            {shortTeamName(team.name)} {count}
+                          </span>
+                        ))}
+                        {isAdminOrLider &&
+                          missing.slice(0, 3).map((t) => (
+                            <span
+                              key={t.id}
+                              className="text-[10px] font-semibold px-2 py-1 bg-amber-50 text-amber-700 rounded-full border border-dashed border-amber-300"
+                            >
+                              Falta {shortTeamName(t.name)}
+                            </span>
+                          ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <Link

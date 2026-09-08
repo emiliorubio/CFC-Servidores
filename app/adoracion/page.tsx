@@ -25,6 +25,9 @@ interface AdoracionCulto {
   service_type?: string | null;
   service_date?: string | null;
   date?: string | null;
+  time?: string | null;
+  start_time?: string | null;
+  service_time?: string | null;
 }
 
 interface AdoracionProfile {
@@ -67,6 +70,27 @@ interface AdoracionSong {
   created_at?: string;
 }
 
+function cultoDetalle(culto: AdoracionCulto) {
+  const raw = culto.service_date || culto.date || "";
+  const d = new Date(raw);
+  const fecha = isNaN(d.getTime())
+    ? raw || "Fecha por confirmar"
+    : d.toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" });
+
+  let hora = "";
+  const explicit = culto.time || culto.start_time || culto.service_time;
+  if (explicit) hora = explicit.slice(0, 5);
+  else if (raw.includes("T")) {
+    const t = raw.split("T")[1];
+    if (t && !t.startsWith("00:00")) hora = t.slice(0, 5);
+  } else if (raw.includes(" ")) {
+    const t = raw.split(" ")[1];
+    if (t && !t.startsWith("00:00")) hora = t.slice(0, 5);
+  }
+
+  return { fecha: fecha.charAt(0).toUpperCase() + fecha.slice(1), hora };
+}
+
 export default function AdoracionPage() {
   const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
   const [loading, setLoading] = useState(true);
@@ -89,7 +113,7 @@ export default function AdoracionPage() {
   const [selfCultoId, setSelfCultoId] = useState("");
   const [selfInstrument, setSelfInstrument] = useState<string>(ADORACION_ROLES[0]);
 
-  // Gestión de Setlist (Canciones) por Culto con campos completos
+  // Gestión de Setlist (Canciones) por Culto
   const [selectedCultoForSetlist, setSelectedCultoForSetlist] = useState<string>("");
   const [songTitle, setSongTitle] = useState("");
   const [songArtist, setSongArtist] = useState("");
@@ -97,16 +121,18 @@ export default function AdoracionPage() {
   const [songUrl, setSongUrl] = useState("");
   const [setlists, setSetlists] = useState<Record<string, AdoracionSong[]>>({});
 
-  const formatDateTime = (rawDate?: string | null) => {
-    if (!rawDate) return "";
-    let clean = rawDate.replace("T", " ");
-    if (clean.includes("+")) clean = clean.split("+")[0];
-    if (clean.length > 16) clean = clean.substring(0, 16);
-    return clean;
-  };
+  // Add rápido en el próximo culto
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickArtist, setQuickArtist] = useState("");
+  const [quickKey, setQuickKey] = useState("");
+
+  // Momento de carga para calcular el "próximo culto" (evita Date.now() en render)
+  const [now, setNow] = useState(0);
 
   const loadAllData = useCallback(async () => {
     if (!org?.id) return;
+
+    setNow(Date.now());
 
     // 3. Obtener/Identificar ID del Equipo de Adoración
     const { data: tData } = await supabase
@@ -114,9 +140,9 @@ export default function AdoracionPage() {
       .select("id, name")
       .eq("organization_id", org.id);
     if (tData) {
-      const adoTeam = tData.find(t => 
-        t.name.toLowerCase().includes("adorac") || 
-        t.name.toLowerCase().includes("alabanz") || 
+      const adoTeam = tData.find((t) =>
+        t.name.toLowerCase().includes("adorac") ||
+        t.name.toLowerCase().includes("alabanz") ||
         t.name.toLowerCase().includes("músic")
       );
       setAdoracionTeamId(adoTeam ? adoTeam.id : tData[0]?.id || "");
@@ -128,7 +154,7 @@ export default function AdoracionPage() {
       .select("*")
       .eq("organization_id", org.id)
       .order("service_date", { ascending: true });
-    
+
     if (serviceData) {
       const branchCultos = serviceData;
       setCultos(branchCultos);
@@ -194,6 +220,12 @@ export default function AdoracionPage() {
 
   const isLiderOrAdmin = userRole === "lider" || userRole === "admin" || userRole === "superadmin";
 
+  const isBanda = (a: AdoracionAssignment) =>
+    a.team_id === adoracionTeamId ||
+    a.area?.toLowerCase().includes("adorac") ||
+    a.area?.toLowerCase().includes("alabanz") ||
+    ADORACION_ROLES.some((r) => a.area?.includes(r));
+
   // Auto-agendarse en la Banda
   const handleSelfAssign = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,28 +280,44 @@ export default function AdoracionPage() {
     await loadAllData();
   };
 
+  // Agregar canción genérica a un culto
+  const addSong = async (
+    cultoId: string,
+    title: string,
+    artist: string,
+    keyNote: string,
+    url: string
+  ) => {
+    if (!title.trim() || !cultoId || !org?.id) return "Escribe el nombre de la canción.";
+    if (!cultos.some((c) => c.id === cultoId)) return "Culto no válido.";
+
+    const songPayload = {
+      service_schedule_id: cultoId,
+      organization_id: org?.id,
+      title: title.trim(),
+      artist: artist.trim() || null,
+      key_note: keyNote.trim() || null,
+      song_url: url.trim() || null,
+    };
+
+    const { error } = await supabase.from("service_songs").insert(songPayload);
+    if (error) return "Error al guardar la canción: " + error.message;
+
+    await loadAllData();
+    return null;
+  };
+
   // Agregar Canción con todos los campos (Nombre, Cantante, Nota/Tono y Link)
   const handleAddSong = async (e: React.FormEvent) => {
     e.preventDefault();
-    const organizationId = org?.id;
-    if (!songTitle.trim() || !selectedCultoForSetlist || !organizationId) {
+    if (!songTitle.trim() || !selectedCultoForSetlist || !org?.id) {
       alert("Escribe el nombre de la canción.");
       return;
     }
 
-    const songPayload = {
-      service_schedule_id: selectedCultoForSetlist,
-      organization_id: organizationId,
-      title: songTitle.trim(),
-      artist: songArtist.trim() || null,
-      key_note: songKey.trim() || null,
-      song_url: songUrl.trim() || null
-    };
-
-    const { error } = await supabase.from("service_songs").insert(songPayload);
-
-    if (error) {
-      alert("Error al guardar la canción: " + error.message);
+    const err = await addSong(selectedCultoForSetlist, songTitle, songArtist, songKey, songUrl);
+    if (err) {
+      alert(err);
       return;
     }
 
@@ -278,7 +326,19 @@ export default function AdoracionPage() {
     setSongArtist("");
     setSongKey("");
     setSongUrl("");
-    await loadAllData();
+  };
+
+  // Add rápido desde el próximo culto
+  const handleQuickAddSong = async () => {
+    if (!nextCulto) return;
+    const err = await addSong(nextCulto.id, quickTitle, quickArtist, quickKey, "");
+    if (err) {
+      alert(err);
+      return;
+    }
+    setQuickTitle("");
+    setQuickArtist("");
+    setQuickKey("");
   };
 
   const handleRemoveSong = async (songId: string) => {
@@ -307,60 +367,262 @@ export default function AdoracionPage() {
 
   if (loading || orgLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <p className="text-amber-400 font-medium animate-pulse">Cargando Ministerio de Adoración...</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <p className="text-slate-600 font-medium animate-pulse">Cargando Ministerio de Adoración...</p>
       </div>
     );
   }
 
   const currentBranchName = org?.name || "tu iglesia";
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6">
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        {/* ENCABEZADO */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-wrap justify-between items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🎵</span>
-              <h1 className="text-2xl font-bold text-white">Ministerio de Adoración</h1>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Hola, <strong className="text-amber-400">{userProfile?.full_name}</strong> — Coordinación de Alabanza y Músicos
-            </p>
-          </div>
+  // Próximo culto (el más cercano futuro; si no hay, el último)
+  const upcoming = cultos
+    .filter((c) => new Date(c.service_date || c.date || "").getTime() >= now)
+    .sort((a, b) => new Date(a.service_date || "").getTime() - new Date(b.service_date || "").getTime());
+  const nextCulto = upcoming[0] || cultos[0] || null;
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold px-3 py-1.5 bg-slate-800 text-slate-300 rounded-full border border-slate-700">
-              📍 Iglesia: {currentBranchName}
-            </span>
-          </div>
+  const nameFor = (a: AdoracionAssignment) => {
+    let personName = a.user_name;
+    if (!personName) {
+      if (a.profile_id === userProfile?.id) personName = userProfile?.full_name;
+      else {
+        const prof = servidores.find((s) => s.id === a.profile_id);
+        const mem = churchMembers.find((m) => m.id === a.member_id);
+        personName = prof?.full_name || mem?.full_name || "Servidor";
+      }
+    }
+    return personName || "Servidor";
+  };
+
+  const bandOf = (cultoId: string) => assignments.filter((a) => a.service_schedule_id === cultoId && isBanda(a));
+
+  const totalSongs = Object.values(setlists).reduce((acc, list) => acc + list.length, 0);
+  const totalBand = assignments.filter(isBanda).length;
+
+  const buildAlineacionMessage = (culto: AdoracionCulto) => {
+    const detail = cultoDetalle(culto);
+    const band = bandOf(culto.id);
+    const list = setlists[culto.id] || [];
+
+    const lines = [
+      `🎵 Alineación de Alabanza — ${currentBranchName}`,
+      `🗓️ ${detail.fecha}${detail.hora ? ` — ${detail.hora} hrs` : ""}`,
+    ];
+
+    if (band.length > 0) {
+      lines.push("", "👥 Banda confirmada:");
+      band.forEach((m) => {
+        lines.push(`  • ${nameFor(m)} — ${m.area?.replace("Adoración: ", "") || "Músico"}`);
+      });
+    } else {
+      lines.push("", "👥 Aún sin músicos confirmados.");
+    }
+
+    if (list.length > 0) {
+      lines.push("", "🎶 Setlist:");
+      list.forEach((s, i) => {
+        const artist = s.artist ? ` (${s.artist})` : "";
+        const tono = s.key_note ? ` [Tono: ${s.key_note}]` : "";
+        lines.push(`  ${i + 1}. ${s.title}${artist}${tono}`);
+      });
+    }
+
+    lines.push("", "¡Los esperamos!");
+    return lines.join("\n");
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* ENCABEZADO */}
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-8 rounded-3xl shadow-lg space-y-2">
+          <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-3 py-1 rounded-full">
+            MINISTERIO DE ADORACIÓN
+          </span>
+          <h1 className="text-3xl font-extrabold tracking-tight">🎵 Alabanza y Músicos</h1>
+          <p className="text-sm text-indigo-100 max-w-2xl">
+            Hola, <strong className="text-white">{userProfile?.full_name}</strong> — organiza la banda, los
+            setlist y confirma a los músicos para {currentBranchName}.
+          </p>
         </div>
 
-        {/* ANOTARME EN LA BANDA (PARA MÚSICOS Y SERVIDORES) */}
-        <div className="bg-gradient-to-r from-purple-900/40 to-slate-900 border border-purple-500/30 p-6 rounded-2xl shadow-lg space-y-4">
+        {/* KPIs */}
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Próximo culto</p>
+            <p className="text-sm font-bold text-slate-800 mt-1">
+              {nextCulto ? cultoDetalle(nextCulto).fecha : "Sin cultos"}
+            </p>
+            {nextCulto && cultoDetalle(nextCulto).hora && (
+              <p className="text-xs font-semibold text-indigo-600 mt-0.5">⏰ {cultoDetalle(nextCulto).hora} hrs</p>
+            )}
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Banda confirmada</p>
+            <p className="text-2xl font-extrabold text-purple-700 mt-1">{totalBand}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">músicos / cantantes</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Setlist en agenda</p>
+            <p className="text-2xl font-extrabold text-indigo-700 mt-1">{totalSongs}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">canciones programadas</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Cultos agendados</p>
+            <p className="text-2xl font-extrabold text-slate-800 mt-1">{cultos.length}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">instancias listadas</p>
+          </div>
+        </section>
+
+        {/* PRÓXIMO CULTO DESTACADO */}
+        {nextCulto && (
+          <section className="bg-white rounded-3xl p-6 border border-purple-200 shadow-md space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 pb-4">
+              <div className="flex items-center gap-3">
+                <span className="w-11 h-11 flex items-center justify-center rounded-2xl bg-purple-600 text-white text-xl shadow-md">⭐</span>
+                <div>
+                  <h2 className="font-bold text-slate-800 text-lg">{nextCulto.title || nextCulto.service_type || "Culto"}</h2>
+                  <p className="text-xs text-purple-700 font-semibold mt-0.5 capitalize">
+                    🗓️ {cultoDetalle(nextCulto).fecha} {cultoDetalle(nextCulto).hora && `— ⏰ ${cultoDetalle(nextCulto).hora} hrs`}
+                  </p>
+                </div>
+              </div>
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(buildAlineacionMessage(nextCulto))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+              >
+                📲 Compartir alineación por WhatsApp
+              </a>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              {/* Banda confirmada */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Banda confirmada:</p>
+                {bandOf(nextCulto.id).length === 0 ? (
+                  <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-center">
+                    <p className="text-2xl mb-1">🎸</p>
+                    <p className="text-xs text-amber-800 font-semibold">Aún no hay músicos inscritos para este culto.</p>
+                    <p className="text-[11px] text-amber-700/80 mt-1">Anótate abajo o asigna músicos manualmente.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {bandOf(nextCulto.id).map((m) => (
+                      <div key={m.id} className="flex items-center justify-between text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-purple-600 font-bold">🎵</span>
+                          <span className="font-semibold text-slate-800">{nameFor(m)}</span>
+                          <span className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                            {m.area?.replace("Adoración: ", "") || "Músico"}
+                          </span>
+                        </div>
+                        {(isLiderOrAdmin || m.profile_id === userProfile?.id) && (
+                          <button onClick={() => handleRemoveAssignment(m.id)} className="text-[10px] text-red-400 hover:text-red-300 font-bold">
+                            Quitar
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Setlist del próximo culto */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Setlist de este culto:</p>
+                {!setlists[nextCulto.id] || setlists[nextCulto.id].length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">Sin canciones aún. Agrega la primera abajo.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {setlists[nextCulto.id].map((song, idx) => (
+                      <div key={song.id} className="flex justify-between items-center text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-slate-800">
+                            {idx + 1}. {song.title} {song.artist && <span className="text-slate-400 font-normal">({song.artist})</span>}
+                          </p>
+                          {song.key_note && (
+                            <span className="inline-block text-[10px] font-mono bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-md">
+                              Tono: {song.key_note}
+                            </span>
+                          )}
+                        </div>
+                        {song.song_url && (
+                          <a href={song.song_url} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-2 py-1 rounded-lg transition-colors">
+                            ▶️ Link
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add rápido de canción */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleQuickAddSong();
+                  }}
+                  className="flex flex-wrap gap-2 bg-purple-50/60 border border-purple-200/70 rounded-2xl p-3"
+                >
+                  <input
+                    type="text"
+                    required
+                    placeholder="Canción (ej: Cuán Grande es Él)"
+                    value={quickTitle}
+                    onChange={(e) => setQuickTitle(e.target.value)}
+                    className="flex-1 min-w-[140px] bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Artista"
+                    value={quickArtist}
+                    onChange={(e) => setQuickArtist(e.target.value)}
+                    className="w-[110px] bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Tono (G, C#...)"
+                    value={quickKey}
+                    onChange={(e) => setQuickKey(e.target.value)}
+                    className="w-[100px] bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
+                  >
+                    + Añadir
+                  </button>
+                </form>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ANOTARME EN LA BANDA */}
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-purple-200 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               <span>🎸</span> Confirmar mi Participación en la Alabanza
             </h2>
-            <p className="text-xs text-purple-300/70">Selecciona el servicio y el instrumento/rol que ejercerás.</p>
+            <p className="text-xs text-slate-500">Selecciona el servicio y el instrumento/rol que ejercerás.</p>
           </div>
 
           <form onSubmit={handleSelfAssign} className="grid gap-3 sm:grid-cols-3 items-end">
             <div>
-              <label className="block text-xs font-semibold text-purple-200 mb-1">Culto / Fecha</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Culto / Fecha</label>
               <select
                 value={selfCultoId}
                 onChange={(e) => setSelfCultoId(e.target.value)}
-                className="w-full bg-slate-950 border border-purple-500/40 rounded-xl p-2.5 text-sm text-slate-200 focus:ring-2 focus:ring-purple-500"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 {cultos.length === 0 ? (
                   <option value="">No hay cultos programados</option>
                 ) : (
                   cultos.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.title || c.service_type} ({formatDateTime(c.service_date || c.date)})
+                      {c.title || c.service_type} — {cultoDetalle(c).fecha} {cultoDetalle(c).hora && `(${cultoDetalle(c).hora})`}
                     </option>
                   ))
                 )}
@@ -368,11 +630,11 @@ export default function AdoracionPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-purple-200 mb-1">Instrumento / Rol</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Instrumento / Rol</label>
               <select
                 value={selfInstrument}
                 onChange={(e) => setSelfInstrument(e.target.value)}
-                className="w-full bg-slate-950 border border-purple-500/40 rounded-xl p-2.5 text-sm text-slate-200 focus:ring-2 focus:ring-purple-500"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 {ADORACION_ROLES.map((role) => (
                   <option key={role} value={role}>{role}</option>
@@ -383,7 +645,7 @@ export default function AdoracionPage() {
             <button
               type="submit"
               disabled={cultos.length === 0}
-              className="bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-all shadow-md shadow-purple-900/50"
+              className="bg-purple-600 hover:bg-purple-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-all shadow-sm"
             >
               Confirmar en Alabanza
             </button>
@@ -392,48 +654,48 @@ export default function AdoracionPage() {
 
         {/* REGISTRO DIRECTO DE MÚSICO (DIRECTOR / LÍDER) */}
         {isLiderOrAdmin && (
-          <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <span>🎤</span> Asignar Músico / Cantante Manualmente
               </h2>
-              <p className="text-xs text-slate-400">Agrega integrantes a la lista del domingo aunque no usen la App.</p>
+              <p className="text-xs text-slate-500">Agrega integrantes a la lista del domingo aunque no usen la App.</p>
             </div>
 
             <form onSubmit={handleAddManualServer} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Nombre Hermano/a</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Nombre Hermano/a</label>
                 <input
                   type="text"
                   required
                   placeholder="Ej: Daniel Rojo"
                   value={manualName}
                   onChange={(e) => setManualName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Culto</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Culto</label>
                 <select
                   value={manualCultoId}
                   onChange={(e) => setManualCultoId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
                 >
                   {cultos.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.title || c.service_type} ({formatDateTime(c.service_date || c.date)})
+                      {c.title || c.service_type} — {cultoDetalle(c).fecha}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Instrumento / Función</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Instrumento / Función</label>
                 <select
                   value={manualInstrument}
                   onChange={(e) => setManualInstrument(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
                 >
                   {ADORACION_ROLES.map((role) => (
                     <option key={role} value={role}>{role}</option>
@@ -453,45 +715,35 @@ export default function AdoracionPage() {
         )}
 
         {/* CRONOGRAMA Y BANDA PROGRAMADA POR CULTO */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-6">
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6">
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <span>📅</span> Alineación de Banda por Culto
             </h2>
-            <p className="text-xs text-slate-400">Equipo programado para la alabanza en {currentBranchName}</p>
+            <p className="text-xs text-slate-500">Equipo programado para la alabanza en {currentBranchName}</p>
           </div>
 
           {cultos.length === 0 ? (
-            <div className="p-8 text-center bg-slate-950 rounded-xl border border-dashed border-slate-800">
+            <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
               <p className="text-sm font-semibold text-slate-500">No hay servicios programados en esta sede.</p>
             </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2">
               {cultos.map((culto) => {
-                const bandMembers = assignments.filter((a) => {
-                  const isCultoMatch = a.service_schedule_id === culto.id;
-                  const isAdoracionArea = 
-                    a.team_id === adoracionTeamId || 
-                    a.area?.toLowerCase().includes("adorac") ||
-                    a.area?.toLowerCase().includes("alabanz") ||
-                    ADORACION_ROLES.some(r => a.area?.includes(r));
-
-                  return isCultoMatch && isAdoracionArea;
-                });
-
+                const bandMembers = bandOf(culto.id);
                 const currentSetlist = setlists[culto.id] || [];
 
                 return (
-                  <div key={culto.id} className="p-5 border border-slate-800 rounded-2xl bg-slate-950/60 shadow-inner space-y-4 flex flex-col justify-between">
+                  <div key={culto.id} className="p-5 border border-slate-200 rounded-2xl bg-slate-50/60 shadow-sm space-y-4 flex flex-col justify-between">
                     <div>
-                      <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+                      <div className="flex justify-between items-start border-b border-slate-200 pb-3">
                         <div>
-                          <h3 className="font-bold text-amber-400 text-lg">{culto.title || culto.service_type}</h3>
-                          <p className="text-xs font-medium text-slate-400 mt-0.5">
-                            🗓️ {formatDateTime(culto.service_date || culto.date)}
+                          <h3 className="font-bold text-indigo-700 text-lg">{culto.title || culto.service_type}</h3>
+                          <p className="text-xs font-medium text-slate-500 mt-0.5 capitalize">
+                            🗓️ {cultoDetalle(culto).fecha} {cultoDetalle(culto).hora && `— ⏰ ${cultoDetalle(culto).hora} hrs`}
                           </p>
                         </div>
-                        <span className="text-[11px] font-bold px-2.5 py-1 bg-purple-950 text-purple-300 rounded-lg border border-purple-800">
+                        <span className="text-[11px] font-bold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200">
                           {bandMembers.length} Integrantes
                         </span>
                       </div>
@@ -500,74 +752,58 @@ export default function AdoracionPage() {
                       <div className="mt-4 space-y-2">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Banda Confirmada:</p>
                         {bandMembers.length === 0 ? (
-                          <p className="text-xs text-slate-600 italic">No hay músicos o cantantes inscritos aún.</p>
+                          <p className="text-xs text-slate-500 italic">No hay músicos o cantantes inscritos aún.</p>
                         ) : (
                           <div className="grid gap-1.5">
-                            {bandMembers.map((asgn) => {
-                              const isMe = asgn.profile_id === userProfile?.id;
-                              let personName = asgn.user_name;
-
-                              if (!personName) {
-                                if (isMe) personName = userProfile?.full_name;
-                                else {
-                                  const prof = servidores.find(s => s.id === asgn.profile_id);
-                                  const mem = churchMembers.find(m => m.id === asgn.member_id);
-                                  personName = prof?.full_name || mem?.full_name || "Servidor";
-                                }
-                              }
-
-                              const roleLabel = asgn.area?.replace("Adoración: ", "") || "Músico";
-
-                              return (
-                                <div key={asgn.id} className="flex justify-between items-center text-xs bg-slate-900 px-3 py-2 rounded-xl border border-slate-800/80">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-purple-400 font-bold">🎵</span>
-                                    <span className="font-semibold text-slate-200">{personName}</span>
-                                    <span className="text-[11px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
-                                      {roleLabel}
-                                    </span>
-                                  </div>
-
-                                  {(isLiderOrAdmin || isMe) && (
-                                    <button
-                                      onClick={() => handleRemoveAssignment(asgn.id)}
-                                      className="text-[10px] text-red-400 hover:text-red-300 font-bold"
-                                    >
-                                      Quitar
-                                    </button>
-                                  )}
+                            {bandMembers.map((asgn) => (
+                              <div key={asgn.id} className="flex justify-between items-center text-xs bg-white px-3 py-2 rounded-xl border border-slate-200">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-purple-600 font-bold">🎵</span>
+                                  <span className="font-semibold text-slate-800">{nameFor(asgn)}</span>
+                                  <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                    {asgn.area?.replace("Adoración: ", "") || "Músico"}
+                                  </span>
                                 </div>
-                              );
-                            })}
+
+                                {(isLiderOrAdmin || asgn.profile_id === userProfile?.id) && (
+                                  <button
+                                    onClick={() => handleRemoveAssignment(asgn.id)}
+                                    className="text-[10px] text-red-400 hover:text-red-300 font-bold"
+                                  >
+                                    Quitar
+                                  </button>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
 
-                      {/* REPERTORIO / CANCIONES (SETLIST) DETALLADO */}
+                      {/* REPERTORIO / CANCIONES (SETLIST) */}
                       {currentSetlist.length > 0 && (
-                        <div className="mt-4 border-t border-slate-800/60 pt-3">
+                        <div className="mt-4 border-t border-slate-200/80 pt-3">
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">🎶 Setlist / Canciones:</p>
                           <div className="space-y-1.5">
                             {currentSetlist.map((song, idx) => (
-                              <div key={idx} className="flex justify-between items-center text-xs bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-slate-200">
+                              <div key={idx} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700">
                                 <div className="space-y-0.5">
                                   <p className="font-semibold">
                                     {idx + 1}. {song.title} {song.artist && <span className="text-slate-400 font-normal">({song.artist})</span>}
                                   </p>
                                   {song.key_note && (
-                                    <span className="inline-block text-[10px] font-mono bg-purple-900/60 text-purple-200 px-2 py-0.5 rounded-md">
+                                    <span className="inline-block text-[10px] font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md">
                                       Tono: {song.key_note}
                                     </span>
                                   )}
                                 </div>
-                                
+
                                 <div className="flex items-center gap-2">
                                   {song.song_url && (
                                     <a
                                       href={song.song_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-[10px] bg-red-900/40 hover:bg-red-900/60 text-red-300 border border-red-700/50 px-2 py-1 rounded-lg transition-colors"
+                                      className="text-[10px] bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-2 py-1 rounded-lg transition-colors"
                                     >
                                       ▶️ Link
                                     </a>
@@ -575,7 +811,7 @@ export default function AdoracionPage() {
                                   {isLiderOrAdmin && (
                                     <button
                                       onClick={() => handleRemoveSong(song.id)}
-                                      className="text-xs text-slate-500 hover:text-red-400 px-1"
+                                      className="text-xs text-slate-400 hover:text-red-500 px-1"
                                     >
                                       ✕
                                     </button>
@@ -596,18 +832,18 @@ export default function AdoracionPage() {
 
         {/* GESTOR DE REPERTORIO DE CANCIONES (SETLIST COMPLETO) */}
         {isLiderOrAdmin && (
-          <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               <span>🎼</span> Cargar Canción al Setlist
             </h2>
 
             <form onSubmit={handleAddSong} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 items-end">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Culto</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Culto</label>
                 <select
                   value={selectedCultoForSetlist}
                   onChange={(e) => setSelectedCultoForSetlist(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {cultos.map((c) => (
                     <option key={c.id} value={c.id}>{c.title || c.service_type}</option>
@@ -616,54 +852,54 @@ export default function AdoracionPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Canción / Nombre</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Canción / Nombre</label>
                 <input
                   type="text"
                   required
                   placeholder="Ej: Cuán Grande es Él"
                   value={songTitle}
                   onChange={(e) => setSongTitle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Cantante / Grupo</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Cantante / Grupo</label>
                 <input
                   type="text"
                   placeholder="Ej: En Espíritu y Verdad"
                   value={songArtist}
                   onChange={(e) => setSongArtist(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Tono / Nota</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Tono / Nota</label>
                 <input
                   type="text"
                   placeholder="Ej: Sol (G) / C#"
                   value={songKey}
                   onChange={(e) => setSongKey(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Link (YouTube/Chords)</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Link (YouTube/Chords)</label>
                 <input
                   type="url"
                   placeholder="https://..."
                   value={songUrl}
                   onChange={(e) => setSongUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div className="lg:col-span-5 flex justify-end">
                 <button
                   type="submit"
-                  className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2.5 px-6 rounded-xl text-sm transition-colors"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-6 rounded-xl text-sm transition-colors"
                 >
                   + Añadir Canción al Repertorio
                 </button>
@@ -671,7 +907,6 @@ export default function AdoracionPage() {
             </form>
           </div>
         )}
-
       </div>
     </div>
   );

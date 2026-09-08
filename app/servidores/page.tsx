@@ -475,6 +475,32 @@ export default function ServidoresPage() {
             )}
           </div>
 
+          {teams.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {teams.map((team) => {
+                const count = assignments.filter((a) => a.team_id === team.id).length;
+                return (
+                  <button
+                    key={team.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedFilterArea((prev) => (prev === team.id ? "all" : team.id))
+                    }
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                      selectedFilterArea === team.id
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : count > 0
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                          : "bg-amber-50 text-amber-700 border-dashed border-amber-300 hover:bg-amber-100"
+                    }`}
+                  >
+                    {team.name.split("(")[0].trim()} {count > 0 ? `${count}` : "· falta"}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {!activeServiceId ? (
             <p className="text-xs text-slate-400 italic">Programa o selecciona un culto para ver sus asignaciones.</p>
           ) : loading ? (

@@ -25,6 +25,7 @@ const CAT_GASTO = ["Arriendo", "Servicios básicos", "Música y Sonido", "Insumo
 
 function mesKey(fecha: string): string {
   const d = new Date(`${fecha}T12:00:00`);
+  if (isNaN(d.getTime())) return "";
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
@@ -32,6 +33,7 @@ function mesKey(fecha: string): string {
 
 function mesLabel(key: string): string {
   const d = new Date(`${key}-01T12:00:00`);
+  if (isNaN(d.getTime())) return key || "Del período";
   const nombre = new Intl.DateTimeFormat("es-ES", { month: "long" }).format(d);
   return `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} ${d.getFullYear()}`;
 }
@@ -314,7 +316,7 @@ export default function FinanzasPage() {
             <div>
               <h2 className="text-lg font-bold text-slate-800">Movimientos</h2>
               <p className="text-xs text-slate-500 mt-1">
-                {filtrados.length} registros{mesActual !== "todos" ? ` · ${mesLabel(mesActual)}` : " · histórico completo"}
+                {filtrados.length} registros{mesActual && mesActual !== "todos" ? ` · ${mesLabel(mesActual)}` : mesActual === "todos" ? " · histórico completo" : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

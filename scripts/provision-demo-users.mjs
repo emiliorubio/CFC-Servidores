@@ -34,10 +34,10 @@ const supabase = createClient(url, secret, {
 });
 
 const organizations = [
-  { name: "CFC Puente Alto", slug: "cfc-puente-alto" },
-  { name: "CFC Vida", slug: "cfc-vida" },
-  { name: "Iglesia Habitación Rancagua", slug: "iglesia-habitacion-rancagua" },
-  { name: "Iglesia Habitación Santiago", slug: "iglesia-habitacion-santiago" },
+  { name: "CFC Puente Alto", slug: "cfcpuentealto" },
+  { name: "CFC Vida", slug: "cfcvida" },
+  { name: "Iglesia Habitación Rancagua", slug: "habitacionrancagua" },
+  { name: "Iglesia Habitación Santiago", slug: "habitacionsantiago" },
 ];
 
 const roleCounts = { admin: 2, lider: 4, servidor: 4 };
@@ -78,7 +78,28 @@ const { data: usersPage, error: usersError } = await supabase.auth.admin.listUse
   perPage: 1000,
 });
 if (usersError) throw usersError;
-const usersByEmail = new Map(usersPage.users.map((user) => [user.email?.toLowerCase(), user]));
+
+// Limpieza: elimina usuarios demo antiguos (dominio *.example.test).
+// Nunca toca correos reales (gmail, etc.).
+const staleDemoUsers = usersPage.users.filter((user) =>
+  user.email?.toLowerCase().endsWith(".example.test")
+);
+let deletedUsers = 0;
+for (const user of staleDemoUsers) {
+  const { error } = await supabase.auth.admin.deleteUser(user.id);
+  if (error) throw error;
+  deletedUsers += 1;
+}
+if (deletedUsers > 0) {
+  console.log(`Limpieza: ${deletedUsers} usuario(s) demo antiguo(s) eliminado(s).`);
+}
+
+const { data: freshUsersPage, error: freshUsersError } = await supabase.auth.admin.listUsers({
+  page: 1,
+  perPage: 1000,
+});
+if (freshUsersError) throw freshUsersError;
+const usersByEmail = new Map(freshUsersPage.users.map((user) => [user.email?.toLowerCase(), user]));
 
 let createdUsers = 0;
 let updatedUsers = 0;
@@ -88,7 +109,7 @@ for (const organization of organizations) {
 
   for (const [role, count] of Object.entries(roleCounts)) {
     for (let number = 1; number <= count; number += 1) {
-      const email = `${role}${number}@${organization.slug}.example.test`;
+      const email = `${role}${number}@${organization.slug}.test`;
       const fullName = `${role === "lider" ? "Líder" : role === "admin" ? "Admin" : "Servidor"} ${number} — ${organization.name}`;
       let user = usersByEmail.get(email);
 
@@ -128,4 +149,11 @@ for (const organization of organizations) {
   }
 }
 
-console.log(`Listo: ${createdUsers} usuario(s) creados y ${updatedUsers} actualizados.`);
+console.log(`Listo: ${createdUsers} usuario(s) creados y ${updatedUsers} actualizado(s).`);
+console.log(`Contraseña de prueba (variable DEMO_USERS_PASSWORD, ${password.length} caracteres).`);
+for (const organization of organizations) {
+  console.log(`— ${organization.name} (${organization.slug}.miiglesia.cl):`);
+  console.log(`  admin1@${organization.slug}.test / admin2@${organization.slug}.test`);
+  console.log(`  lider1@${organization.slug}.test ... lider4@${organization.slug}.test`);
+  console.log(`  servidor1@${organization.slug}.test ... servidor4@${organization.slug}.test`);
+}

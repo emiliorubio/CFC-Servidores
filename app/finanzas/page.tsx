@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOrganization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
@@ -19,20 +20,6 @@ interface Movimiento {
   created_at: string;
 }
 
-interface Producto {
-  nombre: string;
-  precio: number;
-}
-
-const PRODUCTOS_INICIALES: Producto[] = [
-  { nombre: "Agua", precio: 1000 },
-  { nombre: "Café", precio: 1000 },
-  { nombre: "Alka", precio: 500 },
-  { nombre: "Completo", precio: 2000 },
-  { nombre: "Bebida", precio: 1000 },
-  { nombre: "Chicle", precio: 500 },
-];
-
 const CAT_INGRESO = ["Diezmo", "Ofrenda", "Donación", "Cafetería", "Esponsor", "Otro"];
 const CAT_GASTO = ["Arriendo", "Servicios básicos", "Música y Sonido", "Insumos", "Transporte", "Otro"];
 
@@ -50,12 +37,13 @@ function mesLabel(key: string): string {
 }
 
 export default function FinanzasPage() {
+  const router = useRouter();
   const { org, userRole, userProfile, loading: orgLoading } = useOrganization();
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [creadores, setCreadores] = useState<Record<string, string>>({});
   const [mesActual, setMesActual] = useState<string>("");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [modal, setModal] = useState<"movimiento" | "cafe" | null>(null);
+  const [modal, setModal] = useState<"movimiento" | null>(null);
   const [loading, setLoading] = useState(true);
   const [resumenPorCategoria, setResumenPorCategoria] = useState(false);
 
@@ -331,7 +319,7 @@ export default function FinanzasPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => setModal("cafe")}
+                onClick={() => router.push("/cafeteria")}
                 className="text-xs font-bold px-3 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
               >
                 ☕ Cafetería
@@ -421,16 +409,6 @@ export default function FinanzasPage() {
 
       {modal === "movimiento" && (
         <ModalMovimiento
-          orgId={org.id}
-          creadoPor={userProfile?.id || null}
-          primaryColor={primaryColor}
-          onClose={() => setModal(null)}
-          onGuardado={cargarMovimientos}
-        />
-      )}
-
-      {modal === "cafe" && (
-        <ModalCafeteria
           orgId={org.id}
           creadoPor={userProfile?.id || null}
           primaryColor={primaryColor}
@@ -587,235 +565,3 @@ function ModalMovimiento({
   );
 }
 
-function ModalCafeteria({
-  orgId,
-  creadoPor,
-  primaryColor,
-  onClose,
-  onGuardado,
-}: {
-  orgId: string;
-  creadoPor: string | null;
-  primaryColor: string;
-  onClose: () => void;
-  onGuardado: () => Promise<void>;
-}) {
-  const [productos, setProductos] = useState<Producto[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = window.localStorage.getItem("cfc_productos_cafeteria");
-        if (saved) return JSON.parse(saved) as Producto[];
-      } catch {
-        // se ignora y parte con el catálogo inicial
-      }
-    }
-    return PRODUCTOS_INICIALES;
-  });
-  const [carrito, setCarrito] = useState<Record<string, number>>({});
-  const [metodoPago, setMetodoPago] = useState<"Efectivo" | "Tarjeta">("Efectivo");
-  const [nuevoNombre, setNuevoNombre] = useState("");
-  const [nuevoPrecio, setNuevoPrecio] = useState("");
-  const [mostrarNuevo, setMostrarNuevo] = useState(false);
-  const [guardando, setGuardando] = useState(false);
-
-  useEffect(() => {
-    window.localStorage.setItem("cfc_productos_cafeteria", JSON.stringify(productos));
-  }, [productos]);
-
-  const totalVenta = Object.entries(carrito).reduce((acc, [nombre, cantidad]) => {
-    const prod = productos.find((p) => p.nombre === nombre);
-    return acc + (prod ? prod.precio * cantidad : 0);
-  }, 0);
-
-  const ajustar = (nombre: string, delta: number) => {
-    setCarrito((prev) => {
-      const actual = prev[nombre] || 0;
-      const total = actual + delta;
-      if (total <= 0) {
-        const copia = { ...prev };
-        delete copia[nombre];
-        return copia;
-      }
-      return { ...prev, [nombre]: total };
-    });
-  };
-
-  const registrarVenta = async () => {
-    if (totalVenta === 0) return;
-    const detalle = Object.entries(carrito)
-      .map(([nombre, cant]) => `${cant}x ${nombre}`)
-      .join(", ");
-    setGuardando(true);
-    const { error } = await supabase.from("transacciones").insert({
-      organization_id: orgId,
-      tipo: "ingreso",
-      categoria: "Cafetería",
-      descripcion: `[Cafetería] ${detalle} (Pago: ${metodoPago})`,
-      monto: totalVenta,
-      fecha: new Date().toISOString().split("T")[0],
-      creado_por: creadoPor,
-    });
-    setGuardando(false);
-    if (error) {
-      window.alert("No se pudo registrar la venta: " + error.message);
-      return;
-    }
-    setCarrito({});
-    await onGuardado();
-    onClose();
-  };
-
-  const agregarProducto = (e: React.FormEvent) => {
-    e.preventDefault();
-    const precio = parseFloat(nuevoPrecio);
-    if (!nuevoNombre.trim() || !precio || precio <= 0) return;
-    setProductos([...productos, { nombre: nuevoNombre.trim(), precio }]);
-    setNuevoNombre("");
-    setNuevoPrecio("");
-    setMostrarNuevo(false);
-  };
-
-  const eliminarProducto = (nombre: string) => {
-    if (window.confirm(`¿Eliminar "${nombre}" del menú de cafetería?`)) {
-      setProductos(productos.filter((p) => p.nombre !== nombre));
-      setCarrito((prev) => {
-        const copia = { ...prev };
-        delete copia[nombre];
-        return copia;
-      });
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 transition-colors font-bold">
-          ✕
-        </button>
-        <h2 className="text-xl font-bold text-slate-800 mb-1">☕ Cafetería - Venta Rápida</h2>
-        <p className="text-xs text-slate-500 mb-4">Cada venta se registra automáticamente como ingreso.</p>
-
-        <div className="mb-4 flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-600 uppercase">Productos:</span>
-          <button
-            onClick={() => setMostrarNuevo(!mostrarNuevo)}
-            className="text-xs text-indigo-600 hover:text-indigo-500 font-bold"
-          >
-            {mostrarNuevo ? "Cancelar" : "+ Agregar producto"}
-          </button>
-        </div>
-
-        {mostrarNuevo && (
-          <form onSubmit={agregarProducto} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 mb-4 flex gap-2">
-            <input
-              type="text"
-              placeholder="Nombre (ej. Kuchen)"
-              value={nuevoNombre}
-              onChange={(e) => setNuevoNombre(e.target.value)}
-              required
-              className="bg-white border border-slate-200 text-sm rounded-xl px-3 py-2 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <input
-              type="number"
-              min="0"
-              placeholder="Precio ($)"
-              value={nuevoPrecio}
-              onChange={(e) => setNuevoPrecio(e.target.value)}
-              required
-              className="bg-white border border-slate-200 text-sm rounded-xl px-3 py-2 w-28 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-2 rounded-xl text-sm font-bold">
-              Crear
-            </button>
-          </form>
-        )}
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
-          {productos.map((prod) => {
-            const cantidad = carrito[prod.nombre] || 0;
-            return (
-              <div
-                key={prod.nombre}
-                className={`p-3 rounded-2xl border transition-colors flex flex-col justify-between relative ${
-                  cantidad > 0 ? "bg-indigo-50 border-indigo-300" : "bg-slate-50 border-slate-200"
-                }`}
-              >
-                <button
-                  onClick={() => eliminarProducto(prod.nombre)}
-                  title="Eliminar producto"
-                  className="absolute top-2 right-2 text-slate-400 hover:text-rose-600 text-xs font-bold"
-                >
-                  🗑️
-                </button>
-                <div>
-                  <p className="font-bold text-sm text-slate-800 pr-5">{prod.nombre}</p>
-                  <p className="text-[11px] text-slate-500">{formatearPesos(prod.precio)}</p>
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <button
-                    onClick={() => ajustar(prod.nombre, -1)}
-                    disabled={cantidad === 0}
-                    className="w-7 h-7 bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-30 rounded-lg flex items-center justify-center text-sm font-bold text-slate-700"
-                  >
-                    -
-                  </button>
-                  <span className="font-bold text-sm text-slate-800">{cantidad}</span>
-                  <button
-                    onClick={() => ajustar(prod.nombre, 1)}
-                    style={{ backgroundColor: primaryColor }}
-                    className="w-7 h-7 text-white rounded-lg flex items-center justify-center text-sm font-bold"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-xs font-bold text-slate-600 uppercase mb-2">Método de pago</label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setMetodoPago("Efectivo")}
-              className={`py-2 rounded-xl text-sm font-bold border transition-colors ${
-                metodoPago === "Efectivo"
-                  ? "bg-emerald-600 border-emerald-500 text-white"
-                  : "bg-slate-50 border-slate-200 text-slate-500"
-              }`}
-            >
-              💵 Efectivo
-            </button>
-            <button
-              type="button"
-              onClick={() => setMetodoPago("Tarjeta")}
-              className={`py-2 rounded-xl text-sm font-bold border transition-colors ${
-                metodoPago === "Tarjeta"
-                  ? "bg-purple-600 border-purple-500 text-white"
-                  : "bg-slate-50 border-slate-200 text-slate-500"
-              }`}
-            >
-              💳 Tarjeta
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-slate-900 p-4 rounded-2xl flex items-center justify-between">
-          <div>
-            <p className="text-[11px] text-slate-400">Total a registrar</p>
-            <p className="text-xl font-extrabold text-emerald-400">{formatearPesos(totalVenta)}</p>
-          </div>
-          <button
-            onClick={registrarVenta}
-            disabled={totalVenta === 0 || guardando}
-            style={{ backgroundColor: primaryColor }}
-            className="text-white px-5 py-3 rounded-xl font-bold text-sm disabled:opacity-40 hover:opacity-90 transition-opacity"
-          >
-            {guardando ? "Registrando..." : "🛒 Registrar Venta"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

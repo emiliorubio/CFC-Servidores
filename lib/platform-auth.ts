@@ -39,3 +39,40 @@ export async function getSuperadminUserId(request: NextRequest): Promise<string 
 export function apiError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
+
+/**
+ * Valida el token de cualquier usuario autenticado (sin filtro de rol) y
+ * devuelve su id + perfil (role, organization_id). Devuelve null si el token
+ * no es válido.
+ */
+export async function getAuthUser(request: NextRequest): Promise<{
+  id: string;
+  role: string | null;
+  organization_id: string | null;
+} | null> {
+  if (!url || !anonKey || !secret) return null;
+  const token = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+
+  const anon = createClient(url, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const {
+    data: { user },
+    error,
+  } = await anon.auth.getUser(token);
+  if (error || !user) return null;
+
+  const service = createClient(url, secret, { auth: { persistSession: false } });
+  const { data } = await service
+    .from("profiles")
+    .select("role, organization_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  return {
+    id: user.id,
+    role: data?.role || null,
+    organization_id: data?.organization_id || null,
+  };
+}

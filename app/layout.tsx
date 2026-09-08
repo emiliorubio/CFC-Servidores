@@ -247,6 +247,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                 <Link href="/consolidacion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                   🙏 Consolidación
                 </Link>
+                <Link href="/cafeteria" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                  ☕ Cafetería
+                </Link>
               </>
             )}
 

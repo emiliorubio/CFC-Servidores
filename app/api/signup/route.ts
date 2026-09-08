@@ -13,12 +13,18 @@ function slugFromRequest(request: NextRequest, localSlug?: unknown) {
     .split(":")[0]
     .toLowerCase();
 
+  const fallbackSlug = typeof localSlug === "string" ? localSlug.toLowerCase() : null;
+
   if (host === "localhost" || host === "127.0.0.1") {
-    return typeof localSlug === "string" ? localSlug.toLowerCase() : null;
+    return fallbackSlug;
   }
 
   const [subdomain] = host.split(".");
-  return subdomain && subdomain !== "www" ? subdomain : null;
+  if (subdomain && subdomain !== "www") {
+    return subdomain;
+  }
+
+  return fallbackSlug;
 }
 
 export async function POST(request: NextRequest) {
@@ -31,6 +37,11 @@ export async function POST(request: NextRequest) {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body?.password === "string" ? body.password : "";
   const slug = slugFromRequest(request, body?.orgSlug);
+  const requestedRole =
+    typeof body?.requestedRole === "string" &&
+    ["servidor", "lider", "coordinador", "pastor", "admin", "superadmin"].includes(body.requestedRole.toLowerCase())
+      ? body.requestedRole.toLowerCase()
+      : "servidor";
 
   if (!fullName || !email || !password || password.length < 8 || !slug) {
     return NextResponse.json({ error: "Completa nombre, correo, contraseña y abre el enlace de una iglesia válida." }, { status: 400 });
@@ -51,7 +62,7 @@ export async function POST(request: NextRequest) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: fullName },
+    user_metadata: { full_name: fullName, requested_role: requestedRole },
     app_metadata: { organization_id: organization.id },
   });
 

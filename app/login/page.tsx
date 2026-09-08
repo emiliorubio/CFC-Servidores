@@ -7,15 +7,21 @@ import { useRouter } from "next/navigation";
 
 export default function AuthPage() {
   const router = useRouter();
-  const { org } = useOrganization();
+  const { org, allOrgs } = useOrganization();
 
   const [isRegister, setIsRegister] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [requestedRole, setRequestedRole] = useState("servidor");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  const registerOrg = selectedOrgId
+    ? allOrgs.find((o) => o.id === selectedOrgId) || null
+    : org || null;
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,16 +31,20 @@ export default function AuthPage() {
 
     try {
       if (isRegister) {
-        const activeOrgId = org?.id;
-
-        if (!activeOrgId) {
-          throw new Error("Abre el enlace de tu iglesia para registrarte. En pruebas locales usa /login?org=el-slug-de-la-iglesia.");
+        if (!registerOrg) {
+          throw new Error("Selecciona una iglesia para crear tu cuenta.");
         }
 
         const response = await fetch("/api/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullName, email, password, orgSlug: org?.slug }),
+          body: JSON.stringify({
+            fullName,
+            email,
+            password,
+            orgSlug: registerOrg.slug,
+            requestedRole,
+          }),
         });
         const result = await response.json();
         if (!response.ok) {
@@ -43,7 +53,9 @@ export default function AuthPage() {
 
         setIsRegister(false);
         setPassword("");
-        setSuccessMsg("Cuenta creada. Ya puedes iniciar sesión.");
+        setSuccessMsg(
+          "Cuenta creada. Ya puedes iniciar sesión. Tu rol quedará como 'servidor' hasta que un administrador confirme tu rol."
+        );
         return;
       } else {
         // Iniciar Sesión
@@ -73,7 +85,7 @@ export default function AuthPage() {
             {org?.name || "Plataforma de Iglesia"}
           </h2>
           <p className="text-xs text-slate-500">
-            {isRegister ? "Crea tu cuenta de voluntario / servidor" : "Ingresa con tus credenciales"}
+            {isRegister ? "Crea tu cuenta e indica tu rol (" + (registerOrg?.name || "tu iglesia") + ")" : "Ingresa con tus credenciales"}
           </p>
         </div>
 
@@ -112,17 +124,52 @@ export default function AuthPage() {
 
         <form onSubmit={handleAuth} className="space-y-4">
           {isRegister && (
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Nombre Completo</label>
-              <input
-                type="text"
-                required
-                placeholder="Tu Nombre y Apellido"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre Completo</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Tu Nombre y Apellido"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Iglesia</label>
+                <select
+                  value={registerOrg?.id || ""}
+                  onChange={(e) => setSelectedOrgId(e.target.value || null)}
+                  className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                >
+                  {allOrgs.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Rol deseado</label>
+                <select
+                  value={requestedRole}
+                  onChange={(e) => setRequestedRole(e.target.value)}
+                  className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                >
+                  <option value="servidor">Servidor / Voluntario</option>
+                  <option value="lider">Líder</option>
+                  <option value="coordinador">Coordinador</option>
+                  <option value="pastor">Pastor</option>
+                  <option value="admin">Administrador</option>
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Un administrador de la iglesia confirma tu rol en la página de Usuarios. Por ahora entras como Servidor.
+                </p>
+              </div>
+            </>
           )}
 
           <div>

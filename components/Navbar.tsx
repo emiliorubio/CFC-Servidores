@@ -75,12 +75,20 @@ export default function Navbar() {
 
           {/* Configuración accesible SOLO para Administradores de la iglesia */}
           {isAdmin && (
-            <Link
-              href="/configuracion"
-              className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl border border-white/20 transition-colors text-amber-300"
-            >
-              ⚙️ Configuración
-            </Link>
+            <>
+              <Link
+                href="/usuarios"
+                className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl border border-white/20 transition-colors"
+              >
+                👥 Usuarios
+              </Link>
+              <Link
+                href="/configuracion"
+                className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl border border-white/20 transition-colors text-amber-300"
+              >
+                ⚙️ Configuración
+              </Link>
+            </>
           )}
         </nav>
 

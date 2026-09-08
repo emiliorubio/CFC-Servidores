@@ -288,6 +288,17 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               </>
             )}
 
+            {userRole === "superadmin" && (
+              <>
+                <Link
+                  href="/plataforma"
+                  className="text-amber-300 hover:text-amber-200 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
+                >
+                  🛠 Plataforma
+                </Link>
+              </>
+            )}
+
             {userRole === "superadmin" && allOrgs.length > 1 && (
               <select
                 value={org?.id || ""}

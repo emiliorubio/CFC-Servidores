@@ -15,6 +15,7 @@ export interface Organization {
   address?: string | null;
   service_times?: string | null;
   contact_phone?: string | null;
+  signup_visible?: boolean;
 }
 
 export type UserRole = "superadmin" | "admin" | "lider" | "servidor";

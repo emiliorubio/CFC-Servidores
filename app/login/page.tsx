@@ -23,6 +23,8 @@ export default function AuthPage() {
     ? allOrgs.find((o) => o.id === selectedOrgId) || null
     : org || null;
 
+  const signupOrgs = allOrgs.filter((o) => o.signup_visible !== false);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -144,12 +146,17 @@ export default function AuthPage() {
                   onChange={(e) => setSelectedOrgId(e.target.value || null)}
                   className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 >
-                  {allOrgs.map((o) => (
+                  {signupOrgs.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.name}
                     </option>
                   ))}
                 </select>
+                {signupOrgs.length === 0 && (
+                  <p className="text-[11px] text-amber-700 mt-1 font-semibold">
+                    Aún no hay iglesias habilitadas para registrarse. Entra por el enlace de tu iglesia.
+                  </p>
+                )}
               </div>
 
               <div>

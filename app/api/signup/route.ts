@@ -48,11 +48,13 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createClient(url, secret, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { data: allOrganizations, error: organizationsError } = await supabase.from("organizations").select("id, slug");
+  const { data: allOrganizations, error: organizationsError } = await supabase.from("organizations").select("id, slug, signup_visible");
   if (organizationsError) {
     return NextResponse.json({ error: "No pudimos verificar la iglesia asociada a este enlace." }, { status: 500 });
   }
-  const organization = (allOrganizations || []).find((item) => normalizeSlug(item.slug) === normalizeSlug(slug));
+  const organization = (allOrganizations || []).find(
+    (item) => normalizeSlug(item.slug) === normalizeSlug(slug) && item.signup_visible !== false
+  );
 
   if (!organization) {
     return NextResponse.json({ error: "No encontramos una iglesia asociada a este enlace." }, { status: 404 });

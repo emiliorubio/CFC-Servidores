@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import { SuperadminNewOrg } from "@/app/configuracion/page";
 import { useRouter } from "next/navigation";
 
 interface PlatformOrg {
@@ -14,6 +15,8 @@ interface PlatformOrg {
   signup_visible: boolean;
   public_adoracion: boolean;
   public_escuela: boolean;
+  primary_color?: string;
+  secondary_color?: string;
   service_pattern?: { weekday: number; time: string }[];
   counts: { cultos: number; miembros: number; asignaciones: number };
 }
@@ -42,11 +45,15 @@ export default function PlataformaPage() {
 
   const [orgs, setOrgs] = useState<PlatformOrg[]>([]);
   const [users, setUsers] = useState<PlatformUser[]>([]);
-  const [tab, setTab] = useState<"iglesias" | "usuarios">("iglesias");
+  const [tab, setTab] = useState<"iglesias" | "usuarios" | "nueva">("iglesias");
   const [loading, setLoading] = useState(true);
   const [savingOrg, setSavingOrg] = useState<string | null>(null);
   const [genOrg, setGenOrg] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "info" | "error"; text: string } | null>(null);
+  const [editOrg, setEditOrg] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPrimary, setEditPrimary] = useState("#4F46E5");
+  const [editSecondary, setEditSecondary] = useState("#0F172A");
 
   const loadAll = useCallback(async () => {
     const {
@@ -167,6 +174,22 @@ export default function PlataformaPage() {
     router.push("/");
   };
 
+  const startEdit = (church: PlatformOrg) => {
+    setEditName(church.name);
+    setEditPrimary(church.primary_color || "#4F46E5");
+    setEditSecondary(church.secondary_color || "#0F172A");
+    setEditOrg(church.id);
+  };
+
+  const saveEdit = async (church: PlatformOrg) => {
+    await updateOrg(church.id, {
+      name: editName.trim() || church.name,
+      primary_color: editPrimary,
+      secondary_color: editSecondary,
+    });
+    setEditOrg(null);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -214,6 +237,14 @@ export default function PlataformaPage() {
           >
             👥 Usuarios ({users.length})
           </button>
+          <button
+            onClick={() => setTab("nueva")}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              tab === "nueva" ? "bg-slate-900 text-white" : "bg-white text-slate-600 border border-slate-200"
+            }`}
+          >
+            ➕ Nueva iglesia
+          </button>
         </div>
 
         {tab === "iglesias" && (
@@ -235,6 +266,12 @@ export default function PlataformaPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
+                      onClick={() => (editOrg === church.id ? setEditOrg(null) : startEdit(church))}
+                      className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold px-3 py-2 rounded-xl transition-colors"
+                    >
+                      {editOrg === church.id ? "Cancelar" : "✏️ Editar"}
+                    </button>
+                    <button
                       onClick={() => openChurch(church)}
                       className="text-xs bg-slate-900 text-white hover:bg-slate-800 font-bold px-3 py-2 rounded-xl transition-colors"
                     >
@@ -249,6 +286,66 @@ export default function PlataformaPage() {
                     </button>
                   </div>
                 </div>
+
+                {editOrg === church.id && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                    <p className="text-xs font-bold text-slate-700">Editar identidad de la iglesia</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600">Nombre</label>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600">Color primario</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={editPrimary}
+                            onChange={(e) => setEditPrimary(e.target.value)}
+                            className="w-10 h-10 rounded-xl cursor-pointer border-0"
+                          />
+                          <input
+                            type="text"
+                            value={editPrimary}
+                            onChange={(e) => setEditPrimary(e.target.value)}
+                            className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono uppercase focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600">Color secundario</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={editSecondary}
+                            onChange={(e) => setEditSecondary(e.target.value)}
+                            className="w-10 h-10 rounded-xl cursor-pointer border-0"
+                          />
+                          <input
+                            type="text"
+                            value={editSecondary}
+                            onChange={(e) => setEditSecondary(e.target.value)}
+                            className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono uppercase focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <button
+                        onClick={() => saveEdit(church)}
+                        disabled={savingOrg === church.id}
+                        className="text-xs bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold px-4 py-2 rounded-xl transition-colors"
+                      >
+                        {savingOrg === church.id ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {(
@@ -332,6 +429,9 @@ export default function PlataformaPage() {
               </table>
             </div>
           </div>
+        )}
+      {tab === "nueva" && (
+          <SuperadminNewOrg onCreated={loadAll} />
         )}
       </div>
     </div>

@@ -42,11 +42,18 @@ function relativeChip(days: number) {
   return null;
 }
 
+function birthdayLabel(days: number) {
+  if (days === 0) return { text: "🎉 Hoy", cls: "bg-rose-100 text-rose-800 border-rose-300" };
+  if (days === 1) return { text: "Mañana", cls: "bg-amber-100 text-amber-800 border-amber-300" };
+  return { text: `En ${days} días`, cls: "bg-sky-50 text-sky-700 border-sky-200" };
+}
+
 export default function HomePage() {
   const { org, userProfile, userRole, loading: orgLoading } = useOrganization();
   const [schedules, setSchedules] = useState<ServiceSchedule[]>([]);
   const [teams, setTeams] = useState<MinistryTeam[]>([]);
   const [assignments, setAssignments] = useState<ServiceAssignment[]>([]);
+  const [birthdays, setBirthdays] = useState<{ id: string; full_name: string; days: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Formulario para crear un nuevo culto
@@ -132,6 +139,26 @@ export default function HomePage() {
           .select("id, service_id, team_id")
           .eq("organization_id", org.id);
         if (active) setAssignments(assignData || []);
+
+        const { data: members } = await supabase
+          .from("church_members")
+          .select("id, full_name, birth_date")
+          .eq("organization_id", org.id)
+          .not("birth_date", "is", null);
+        if (active) {
+          const hoy = new Date();
+          const proximos: { id: string; full_name: string; days: number }[] = [];
+          for (let i = 0; i <= 7; i++) {
+            const target = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + i, 12);
+            const mmdd = `${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+            (members || []).forEach((m) => {
+              const b = String(m.birth_date || "").slice(5, 10);
+              if (b === mmdd) proximos.push({ id: String(m.id), full_name: String(m.full_name), days: i });
+            });
+          }
+          proximos.sort((a, b) => a.days - b.days || a.full_name.localeCompare(b.full_name));
+          setBirthdays(proximos);
+        }
       } catch (err) {
         console.error("Error al cargar los servicios:", err);
       } finally {
@@ -315,6 +342,27 @@ export default function HomePage() {
         </section>
       )}
       
+      {/* Cumpleaños de la semana (miembros con sesión) */}
+      {userProfile && birthdays.length > 0 && (
+        <section className="rounded-3xl p-5 border border-rose-100 bg-gradient-to-r from-rose-50 to-pink-50 shadow-sm">
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-rose-900 mb-3">🎂 Cumpleaños esta semana</h2>
+          <div className="flex flex-wrap gap-2">
+            {birthdays.map((b) => {
+              const label = birthdayLabel(b.days);
+              return (
+                <span
+                  key={b.id}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold border ${label.cls}`}
+                >
+                  {b.full_name}
+                  <span className="opacity-80">{label.text}</span>
+                </span>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Resumen público de la agenda, conservando el diseño de la versión anterior. */}
       <div id="cronograma" className="rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-slate-900 border border-slate-800">
         <div className="space-y-2 max-w-2xl relative z-10">

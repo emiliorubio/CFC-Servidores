@@ -554,7 +554,7 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
   );
 }
 
-function SuperadminNewOrg() {
+export function SuperadminNewOrg({ onCreated }: { onCreated?: () => void } = {}) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#4F46E5");
@@ -612,6 +612,7 @@ function SuperadminNewOrg() {
     });
     setName("");
     setSlug("");
+    onCreated?.();
   };
 
   return (

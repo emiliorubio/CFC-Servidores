@@ -12,6 +12,7 @@ interface MemberRow {
   role?: string | null;
   email?: string | null;
   phone?: string | null;
+  birth_date?: string | null;
   team_id?: string | null;
   user_id?: string | null;
   source: "member" | "profile";
@@ -76,6 +77,7 @@ export default function DirectorioPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [teamId, setTeamId] = useState("");
 
   const loadAll = useCallback(async () => {
@@ -83,7 +85,7 @@ export default function DirectorioPage() {
 
     const { data: membersData } = await supabase
       .from("church_members")
-      .select("id, full_name, role, email, phone, team_id, user_id")
+      .select("id, full_name, role, email, phone, birth_date, team_id, user_id")
       .eq("organization_id", org.id)
       .order("full_name", { ascending: true });
 
@@ -109,6 +111,7 @@ export default function DirectorioPage() {
         role: m.role,
         email: m.email,
         phone: m.phone,
+        birth_date: m.birth_date,
         team_id: m.team_id,
         user_id: m.user_id,
         source: "member",
@@ -177,6 +180,7 @@ export default function DirectorioPage() {
       team_id: teamId || null,
       email: email.trim() || null,
       phone: phone.trim() || null,
+      birth_date: birthDate || null,
       role: null,
     });
     if (error) {
@@ -310,6 +314,15 @@ export default function DirectorioPage() {
                 className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">🎂 Cumpleaños (opcional)</label>
+              <input
+                type="date"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
         </form>
       )}
@@ -390,6 +403,9 @@ export default function DirectorioPage() {
                       ) : m.source === "member" ? (
                         <p className="text-[11px] text-slate-400">WhatsApp: —</p>
                       ) : null}
+                      {m.birth_date && (
+                        <p className="text-[11px] text-slate-500 truncate">🎂 {m.birth_date.slice(5).replace("-", "/")}</p>
+                      )}
                     </div>
                     <span
                       className={`text-[10px] font-bold px-2 py-1 rounded-full border shrink-0 ${

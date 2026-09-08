@@ -5,7 +5,15 @@ import { apiError, getSuperadminUserId } from "@/lib/platform-auth";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const secret = process.env.SUPABASE_SECRET_KEY;
 
-const UPDATEABLE = ["signup_visible", "public_adoracion", "public_escuela", "plan"] as const;
+const UPDATEABLE = [
+  "name",
+  "primary_color",
+  "secondary_color",
+  "signup_visible",
+  "public_adoracion",
+  "public_escuela",
+  "plan",
+] as const;
 
 export async function GET(request: NextRequest) {
   const superUserId = await getSuperadminUserId(request);
@@ -53,7 +61,7 @@ export async function PATCH(request: NextRequest) {
   if (Object.keys(changes).length === 0) return apiError("No hay cambios que aplicar.", 400);
 
   const service = createClient(url, secret, { auth: { persistSession: false } });
-  const { data, error } = await service
+const { data, error } = await service
     .from("organizations")
     .update(changes)
     .eq("id", orgId)

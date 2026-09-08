@@ -57,6 +57,7 @@ export default function FinanzasPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modal, setModal] = useState<"movimiento" | "cafe" | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resumenPorCategoria, setResumenPorCategoria] = useState(false);
 
   const isFinance = ["admin", "superadmin", "pastor", "tesorero"].includes(userRole);
 
@@ -125,6 +126,23 @@ export default function FinanzasPage() {
     [filtrados]
   );
   const saldo = totalIngresos - totalGastos;
+
+  const porCategoria = useMemo(() => {
+    const mapa = new Map<string, { ingresos: number; gastos: number }>();
+    filtrados.forEach((m) => {
+      const clave = m.categoria || "Sin categoría";
+      const entry = mapa.get(clave) || { ingresos: 0, gastos: 0 };
+      if (m.tipo === "ingreso") entry.ingresos += m.monto;
+      else entry.gastos += m.monto;
+      mapa.set(clave, entry);
+    });
+    return [...mapa.entries()].sort(
+      (a, b) => b[1].ingresos + b[1].gastos - (a[1].ingresos + a[1].gastos)
+    );
+  }, [filtrados]);
+
+  const maxCategoria =
+    porCategoria.reduce((acc, [, v]) => Math.max(acc, v.ingresos, v.gastos), 0) || 1;
 
   const eliminarMovimiento = async (mov: Movimiento) => {
     if (!org) return;
@@ -234,6 +252,74 @@ export default function FinanzasPage() {
             <p className="text-2xl font-extrabold mt-2">{formatearPesos(saldo)}</p>
           </div>
         </div>
+
+        <section className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">📊 Detalle por categoría</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Cuánto entra y cuánto sale, agrupado por categoría en el período seleccionado.
+              </p>
+            </div>
+            <button
+              onClick={() => setResumenPorCategoria((v) => !v)}
+              className="text-xs font-bold px-3 py-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors"
+            >
+              {resumenPorCategoria ? "🙈 Ocultar detalle" : "👀 Ver detalle"}
+            </button>
+          </div>
+
+          {resumenPorCategoria && (
+            porCategoria.length === 0 ? (
+              <p className="rounded-xl bg-slate-50 border border-dashed border-slate-200 p-4 text-xs text-slate-500">
+                Sin datos en el período seleccionado.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-600">🟢 Ingresos</p>
+                  {porCategoria.filter(([, v]) => v.ingresos > 0).map(([cat, v]) => (
+                    <div key={`i-${cat}`} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                        <span className="truncate">{cat}</span>
+                        <span className="ml-2 shrink-0">{formatearPesos(v.ingresos)}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-emerald-500"
+                          style={{ width: `${Math.round((v.ingresos / maxCategoria) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {porCategoria.every(([, v]) => v.ingresos === 0) && (
+                    <p className="text-xs text-slate-400">Sin ingresos en este período.</p>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-rose-600">🔴 Gastos</p>
+                  {porCategoria.filter(([, v]) => v.gastos > 0).map(([cat, v]) => (
+                    <div key={`g-${cat}`} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                        <span className="truncate">{cat}</span>
+                        <span className="ml-2 shrink-0">{formatearPesos(v.gastos)}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-rose-500"
+                          style={{ width: `${Math.round((v.gastos / maxCategoria) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {porCategoria.every(([, v]) => v.gastos === 0) && (
+                    <p className="text-xs text-slate-400">Sin gastos en este período.</p>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+        </section>
 
         <section className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

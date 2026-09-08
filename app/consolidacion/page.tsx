@@ -124,6 +124,7 @@ function ConsolidationForm({ org }: { org: Organization }) {
   const [statusFilter, setStatusFilter] = useState<"todos" | Person["status"]>("todos");
   const [nameSearch, setNameSearch] = useState("");
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
+  const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
 
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -305,6 +306,32 @@ function ConsolidationForm({ org }: { org: Organization }) {
     } else {
       window.alert("No se pudo actualizar el estado: " + error.message);
     }
+  };
+
+  const addVisit = async (person: Person) => {
+    if (!org?.id) return;
+    const { error } = await supabase.from("consolidations").insert({
+      organization_id: org.id,
+      full_name: person.full_name,
+      phone: person.phone || "",
+      email: person.email,
+      event_name: "Visita",
+      note: "Seguimiento",
+      person_id: person.id,
+      created_by: userProfile?.id || null,
+    });
+    if (error) {
+      window.alert("No se pudo registrar la visita: " + error.message);
+      return;
+    }
+    const { count } = await supabase
+      .from("consolidations")
+      .select("id", { count: "exact", head: true })
+      .eq("person_id", person.id);
+    if ((count || 0) >= 2) {
+      await supabase.from("consolidation_people").update({ status: "reiterado" }).eq("id", person.id);
+    }
+    await loadHistory();
   };
 
   const handleExportCsv = () => {
@@ -550,58 +577,124 @@ function ConsolidationForm({ org }: { org: Organization }) {
                     return (
                       <div
                         key={person.id}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3"
+                        className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 space-y-3"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-extrabold text-sm shrink-0">
-                            {initials}
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-extrabold text-sm shrink-0">
+                              {initials}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-800 truncate">{person.full_name}</p>
+                              <p className="text-[11px] text-slate-500 truncate">
+                                {person.phone || "Sin WhatsApp"} · {visits.length} visita(s)
+                                {lastVisit
+                                  ? ` · última ${new Date(lastVisit).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}`
+                                  : ""}
+                              </p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate">{person.full_name}</p>
-                            <p className="text-[11px] text-slate-500 truncate">
-                              {person.phone || "Sin WhatsApp"} · {visits.length} visita(s)
-                              {lastVisit
-                                ? ` · última ${new Date(lastVisit).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}`
-                                : ""}
-                            </p>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${STATUS_COLORS[person.status]}`}
-                          >
-                            {STATUS_LABELS[person.status]}
-                          </span>
-
-                          {person.phone && normalizePhone(person.phone).length >= 11 && (
-                            <a
-                              href={`https://wa.me/${normalizePhone(person.phone)}?text=${encodeURIComponent(followUpMessage(org, person))}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Enviar mensaje de seguimiento"
-                              className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1 rounded-xl transition-colors"
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${STATUS_COLORS[person.status]}`}
                             >
-                              📱 Seguimiento
-                            </a>
-                          )}
+                              {STATUS_LABELS[person.status]}
+                            </span>
 
-                          {isLeader && person.status !== "integrado" && (
+                            {person.phone && normalizePhone(person.phone).length >= 11 && (
+                              <a
+                                href={`https://wa.me/${normalizePhone(person.phone)}?text=${encodeURIComponent(followUpMessage(org, person))}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Enviar mensaje de seguimiento"
+                                className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1 rounded-xl transition-colors"
+                              >
+                                📱 Seguimiento
+                              </a>
+                            )}
+
+                            {isLeader && person.status !== "integrado" && (
+                              <button
+                                onClick={() =>
+                                  updatePersonStatus(person, person.status === "nuevo" ? "reiterado" : "integrado")
+                                }
+                                disabled={savingStatus === person.id}
+                                className="text-[10px] font-bold bg-slate-900 hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 text-white px-2.5 py-1 rounded-xl transition-colors"
+                              >
+                                {savingStatus === person.id
+                                  ? "..."
+                                  : person.status === "nuevo"
+                                    ? "→ Reiterado"
+                                    : "→ Integrado"}
+                              </button>
+                            )}
+
                             <button
                               onClick={() =>
-                                updatePersonStatus(person, person.status === "nuevo" ? "reiterado" : "integrado")
+                                setExpandedPerson((prev) => (prev === person.id ? null : person.id))
                               }
-                              disabled={savingStatus === person.id}
-                              className="text-[10px] font-bold bg-slate-900 hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 text-white px-2.5 py-1 rounded-xl transition-colors"
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-xl border transition-colors ${
+                                expandedPerson === person.id
+                                  ? "bg-slate-900 text-white border-slate-900"
+                                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                              }`}
                             >
-                              {savingStatus === person.id
-                                ? "..."
-                                : person.status === "nuevo"
-                                  ? "→ Reiterado"
-                                  : "→ Integrado"}
+                              {expandedPerson === person.id ? "▲ Cerrar" : "▾ Ver ficha"}
                             </button>
-                          )}
+                          </div>
                         </div>
+
+                        {expandedPerson === person.id && (
+                          <div className="w-full rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs font-bold text-slate-700">
+                                📋 Historial de visitas ({visits.length})
+                              </p>
+                              {isLeader && (
+                                <button
+                                  onClick={() => addVisit(person)}
+                                  disabled={savingStatus === person.id}
+                                  className="text-[10px] font-bold bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white px-3 py-1.5 rounded-xl transition-colors"
+                                >
+                                  ➕ Registrar visita de hoy
+                                </button>
+                              )}
+                            </div>
+                            {visits.length === 0 ? (
+                              <p className="text-[11px] text-slate-400">Sin visitas registradas.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {visits.map((r) => (
+                                  <div
+                                    key={r.id}
+                                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-slate-700 capitalize">
+                                        {formatFullDate(r.created_at)}
+                                      </p>
+                                      <p className="text-[11px] text-slate-500 truncate">
+                                        {r.event_name}
+                                        {r.note ? ` · ${r.note}` : ""}
+                                      </p>
+                                    </div>
+                                    {r.phone && (
+                                      <a
+                                        href={whatsappLink(org, person.full_name, r.phone)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700"
+                                      >
+                                        WhatsApp →
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -336,7 +336,7 @@ export default function HomePage() {
             <div className="text-4xl">⛪</div>
             <h3 className="text-base font-bold text-slate-800">Sin cultos registrados aún</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              No hay reuniones agendadas para <strong>{orgName}</strong>. {isAdminOrLider ? "Haz clic en el botón de arriba para agregar la primera." : "Inicia sesión con tu cuenta de líder para agendar fechas."}
+              No hay reuniones agendadas para <strong>{orgName}</strong>. {canGenerateCultos ? "Haz clic en el botón de arriba para agregar la primera." : "Un pastor o administrador debe agendar las fechas."}
             </p>
           </div>
         ) : (

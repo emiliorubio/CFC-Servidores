@@ -49,7 +49,7 @@ interface AttendanceRow {
 }
 
 export default function EscuelaDominicalPage() {
-  const { org, loading: orgLoading, canSeeEscuela } = useOrganization();
+  const { org, loading: orgLoading, canSeeEscuela, canManageEscuela } = useOrganization();
   const [cultos, setCultos] = useState<EscuelaCulto[]>([]);
   const [selectedCulto, setSelectedCulto] = useState<string>("");
   const [groupName, setGroupName] = useState("Párvulos (3-6 años)");
@@ -329,6 +329,7 @@ export default function EscuelaDominicalPage() {
         <div className="grid gap-6 md:grid-cols-3">
           
           {/* FORMULARIO */}
+          {canManageEscuela && (
           <div className="md:col-span-1 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4 h-fit">
             <h2 className="font-bold text-slate-800 text-lg">Nueva Lección</h2>
 
@@ -403,9 +404,10 @@ export default function EscuelaDominicalPage() {
               </button>
             </form>
           </div>
+          )}
 
           {/* LISTADO DE LECCIONES Y MAESTRAS CONFIRMADAS */}
-          <div className="md:col-span-2 space-y-4">
+          <div className={`${canManageEscuela ? "md:col-span-2" : "md:col-span-3"} space-y-4`}>
             <h2 className="font-bold text-slate-800 text-lg">Programación de Clases</h2>
 
             {cultos.map((culto) => {
@@ -435,13 +437,15 @@ export default function EscuelaDominicalPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => handleExportAttendance(culto)}
-                        title="Exportar asistencia a CSV"
-                        className="text-[10px] font-bold px-2.5 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors rounded-full"
-                      >
-                        ⬇ CSV
-                      </button>
+                      {canManageEscuela && (
+                        <button
+                          onClick={() => handleExportAttendance(culto)}
+                          title="Exportar asistencia a CSV"
+                          className="text-[10px] font-bold px-2.5 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors rounded-full"
+                        >
+                          ⬇ CSV
+                        </button>
+                      )}
                       <span className="text-[10px] font-bold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full">
                         {cultLessons.length} clase(s)
                       </span>
@@ -495,14 +499,16 @@ export default function EscuelaDominicalPage() {
                                   📄 Abrir PDF
                                 </a>
                               )}
-                              <button
-                                onClick={() => handleDeleteLesson(lesson)}
-                                disabled={deletingId === lesson.id}
-                                title="Eliminar lección"
-                                className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0"
-                              >
-                                {deletingId === lesson.id ? "..." : "🗑️"}
-                              </button>
+                              {canManageEscuela && (
+                                <button
+                                  onClick={() => handleDeleteLesson(lesson)}
+                                  disabled={deletingId === lesson.id}
+                                  title="Eliminar lección"
+                                  className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0"
+                                >
+                                  {deletingId === lesson.id ? "..." : "🗑️"}
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -510,27 +516,29 @@ export default function EscuelaDominicalPage() {
                             <p className="text-[11px] font-bold text-slate-600 mb-2">
                               👧 Asistencia ({attendance.filter((a) => a.lesson_id === lesson.id).length})
                             </p>
-                            <div className="flex gap-2 mb-2">
-                              <input
-                                value={attendanceInput[lesson.id] || ""}
-                                onChange={(e) => setAttendanceInput((prev) => ({ ...prev, [lesson.id]: e.target.value }))}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    handleAddAttendance(lesson);
-                                  }
-                                }}
-                                placeholder="Nombre del niño/niña"
-                                className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
-                              />
-                              <button
-                                onClick={() => handleAddAttendance(lesson)}
-                                disabled={attendanceSaving[lesson.id] || !(attendanceInput[lesson.id] || "").trim()}
-                                className="bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-colors shrink-0"
-                              >
-                                {attendanceSaving[lesson.id] ? "..." : "+ Añadir"}
-                              </button>
-                            </div>
+                            {canManageEscuela && (
+                              <div className="flex gap-2 mb-2">
+                                <input
+                                  value={attendanceInput[lesson.id] || ""}
+                                  onChange={(e) => setAttendanceInput((prev) => ({ ...prev, [lesson.id]: e.target.value }))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleAddAttendance(lesson);
+                                    }
+                                  }}
+                                  placeholder="Nombre del niño/niña"
+                                  className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                />
+                                <button
+                                  onClick={() => handleAddAttendance(lesson)}
+                                  disabled={attendanceSaving[lesson.id] || !(attendanceInput[lesson.id] || "").trim()}
+                                  className="bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-colors shrink-0"
+                                >
+                                  {attendanceSaving[lesson.id] ? "..." : "+ Añadir"}
+                                </button>
+                              </div>
+                            )}
                             {(() => {
                               const rows = attendance.filter((a) => a.lesson_id === lesson.id);
                               return rows.length > 0 ? (
@@ -545,20 +553,24 @@ export default function EscuelaDominicalPage() {
                                       }`}
                                     >
                                       {row.full_name}
-                                      <button
-                                        onClick={() => handleTogglePresent(row)}
-                                        title={row.present ? "Marcar ausente" : "Marcar presente"}
-                                        className={row.present ? "text-emerald-600" : "text-slate-400"}
-                                      >
-                                        {row.present ? "✓" : "●"}
-                                      </button>
-                                      <button
-                                        onClick={() => handleRemoveAttendance(row)}
-                                        title="Quitar"
-                                        className="text-slate-300 hover:text-red-500"
-                                      >
-                                        ✕
-                                      </button>
+                                      {canManageEscuela && (
+                                        <>
+                                          <button
+                                            onClick={() => handleTogglePresent(row)}
+                                            title={row.present ? "Marcar ausente" : "Marcar presente"}
+                                            className={row.present ? "text-emerald-600" : "text-slate-400"}
+                                          >
+                                            {row.present ? "✓" : "●"}
+                                          </button>
+                                          <button
+                                            onClick={() => handleRemoveAttendance(row)}
+                                            title="Quitar"
+                                            className="text-slate-300 hover:text-red-500"
+                                          >
+                                            ✕
+                                          </button>
+                                        </>
+                                      )}
                                     </span>
                                   ))}
                                 </div>

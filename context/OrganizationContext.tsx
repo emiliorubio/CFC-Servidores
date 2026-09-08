@@ -17,6 +17,8 @@ export interface Organization {
   contact_phone?: string | null;
   signup_visible?: boolean;
   service_pattern?: { weekday: number; time: string }[];
+  public_adoracion?: boolean;
+  public_escuela?: boolean;
 }
 
 export type UserRole = "superadmin" | "admin" | "pastor" | "tesorero" | "coordinador" | "lider" | "servidor";
@@ -36,6 +38,7 @@ interface OrgContextType {
   loading: boolean;
   canSeeAdoracion: boolean;
   canSeeEscuela: boolean;
+  canManageEscuela: boolean;
   switchOrganization: (orgId: string) => void;
 }
 
@@ -117,6 +120,7 @@ const OrganizationContext = createContext<OrgContextType>({
   loading: true,
   canSeeAdoracion: false,
   canSeeEscuela: false,
+  canManageEscuela: false,
   switchOrganization: () => {},
 });
 
@@ -128,6 +132,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
   const [canSeeAdoracion, setCanSeeAdoracion] = useState(false);
   const [canSeeEscuela, setCanSeeEscuela] = useState(false);
+  const [canManageEscuela, setCanManageEscuela] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -208,6 +213,9 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       setCanSeeAdoracion(isModuleLeader);
       setCanSeeEscuela(isModuleLeader);
 
+      let servesAdoracion = false;
+      let servesEscuela = false;
+
       if (finalUserOrgId && !isModuleLeader) {
         const { data: teamsData } = await supabase
           .from("ministry_teams")
@@ -240,15 +248,12 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
         ]);
         const myRoles = (myAssigns || []).map((a) => (a.role_assigned as string | null) || null);
 
-        const servesAdoracion =
+        servesAdoracion =
           [...involvedTeams].some((t) => adoracionTeamIds.has(t)) ||
           myRoles.some((r) => matchesArea(r, ADORACION_AREA_TERMS));
-        const servesEscuela =
+        servesEscuela =
           [...involvedTeams].some((t) => escuelaTeamIds.has(t)) ||
           myRoles.some((r) => matchesArea(r, ESCUELA_AREA_TERMS));
-
-        if (servesAdoracion) setCanSeeAdoracion(true);
-        if (servesEscuela) setCanSeeEscuela(true);
       }
 
       // Si es SuperAdmin, le permitimos usar el selector de iglesia guardado en localStorage
@@ -262,6 +267,16 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       } else {
         setOrg(null); // No se asigna ninguna iglesia si el usuario no tiene una
       }
+
+      // 2c. Visibilidad "pública" de los módulos: si la iglesia activó verlos,
+      //     cualquier miembro autenticado los ve (en modo lectura). La gestión
+      //     sigue siendo del ministerio (líderes + quienes sirven ahí).
+      const effectiveOrg = availableOrgs.find((o) => o.id === (targetOrgId || finalUserOrgId || ""));
+      const publicAdoracion = !isModuleLeader && Boolean(finalUserOrgId) && effectiveOrg?.public_adoracion !== false;
+      const publicEscuela = !isModuleLeader && Boolean(finalUserOrgId) && effectiveOrg?.public_escuela !== false;
+      setCanSeeAdoracion(isModuleLeader || servesAdoracion || publicAdoracion);
+      setCanSeeEscuela(isModuleLeader || servesEscuela || publicEscuela);
+      setCanManageEscuela(isModuleLeader || servesEscuela);
 
     } catch (err) {
       console.error("Error al obtener organización:", err);
@@ -289,7 +304,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   return (
     <OrganizationContext.Provider
-      value={{ org, allOrgs, userRole, userProfile, loading, canSeeAdoracion, canSeeEscuela, switchOrganization }}
+      value={{ org, allOrgs, userRole, userProfile, loading, canSeeAdoracion, canSeeEscuela, canManageEscuela, switchOrganization }}
     >
       {children}
     </OrganizationContext.Provider>

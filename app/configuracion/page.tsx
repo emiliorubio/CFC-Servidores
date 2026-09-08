@@ -31,6 +31,8 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
     Array.isArray(org.service_pattern) ? [...org.service_pattern] : []
   );
   const [signupVisible, setSignupVisible] = useState(org.signup_visible ?? true);
+  const [publicAdoracion, setPublicAdoracion] = useState(org.public_adoracion ?? true);
+  const [publicEscuela, setPublicEscuela] = useState(org.public_escuela ?? true);
   const [newWeekday, setNewWeekday] = useState(org.service_pattern?.[0]?.weekday ?? 0);
   const [newTime, setNewTime] = useState(org.service_pattern?.[0]?.time?.slice(0, 5) ?? "19:00");
   const [uploading, setUploading] = useState(false);
@@ -159,6 +161,8 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
           contact_phone: contactPhone.trim() || null,
           service_pattern: pattern,
           signup_visible: signupVisible,
+          public_adoracion: publicAdoracion,
+          public_escuela: publicEscuela,
         })
         .eq("id", org.id);
 
@@ -262,6 +266,56 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
                 }`}
               />
             </button>
+          </div>
+
+          {/* Vista pública de los ministerios */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-slate-800">🎸 Ver Adoración (lectura)</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Todos los miembros ven el repertorio y la banda confirmada de cada culto.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={publicAdoracion}
+                onClick={() => setPublicAdoracion((value) => !value)}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                  publicAdoracion ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    publicAdoracion ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-slate-800">🧒 Ver Escuela Dominical (lectura)</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Los padres ven quién enseña y el tema de cada clase.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={publicEscuela}
+                onClick={() => setPublicEscuela((value) => !value)}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                  publicEscuela ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    publicEscuela ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           <hr className="border-slate-100" />

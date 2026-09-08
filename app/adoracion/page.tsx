@@ -559,6 +559,7 @@ export default function AdoracionPage() {
                 )}
 
                 {/* Add rápido de canción */}
+                {isLiderOrAdmin && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -595,6 +596,7 @@ export default function AdoracionPage() {
                     + Añadir
                   </button>
                 </form>
+                )}
               </div>
             </div>
           </section>

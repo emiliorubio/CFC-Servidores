@@ -17,7 +17,7 @@ create policy "profiles: lectura propia o de la iglesia"
 
 -- 2) El constraint profiles_role_check (definido manualmente en Supabase) no
 --    incluía 'superadmin', así que no se podía crear el perfil del superadmin.
-drop constraint if exists profiles_role_check on public.profiles;
+alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles
   add constraint profiles_role_check
   check (role in ('servidor', 'lider', 'admin', 'coordinador', 'pastor', 'tesorero', 'superadmin'));

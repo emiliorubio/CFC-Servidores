@@ -231,12 +231,20 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             )}
 
             {isAdmin && (
-              <Link
-                href="/configuracion"
-                className="text-amber-300 hover:text-amber-200 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
-              >
-                ⚙️ Configurar Iglesia
-              </Link>
+              <>
+                <Link
+                  href="/usuarios"
+                  className="text-slate-200 hover:text-amber-400 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
+                >
+                  👥 Usuarios
+                </Link>
+                <Link
+                  href="/configuracion"
+                  className="text-amber-300 hover:text-amber-200 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
+                >
+                  ⚙️ Configurar Iglesia
+                </Link>
+              </>
             )}
 
           </div>

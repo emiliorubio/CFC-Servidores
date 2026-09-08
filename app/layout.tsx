@@ -213,6 +213,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               Servidores & Inscripción
             </Link>
 
+            {user && (
+              <Link href="/directorio" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                📇 Directorio
+              </Link>
+            )}
+
             {isLiderOrAdmin && (
               <>
                 <Link href="/adoracion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">

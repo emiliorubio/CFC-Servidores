@@ -234,6 +234,18 @@ export default function AdoracionPage() {
       return;
     }
 
+    // Evitar duplicados: no inscribirse dos veces al mismo culto.
+    const { data: existing } = await supabase
+      .from("service_assignments")
+      .select("id")
+      .eq("service_id", selfCultoId)
+      .eq("user_id", userProfile.id)
+      .maybeSingle();
+    if (existing) {
+      alert("Ya estás inscrito/a en la alabanza de este culto. Si quieres cambiar tu instrumento, pídele al director que te reasigne.");
+      return;
+    }
+
     const payload = {
       service_id: selfCultoId,
       team_id: adoracionTeamId,

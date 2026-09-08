@@ -30,6 +30,13 @@ interface Assignment {
   } | null;
 }
 
+interface MyAssignment {
+  id: string;
+  service_id: string;
+  team_id: string | null;
+  role_assigned: string;
+}
+
 export default function ServidoresPage() {
   const searchParams = useSearchParams();
   const selectedServiceId = searchParams.get("service_id");
@@ -40,6 +47,7 @@ export default function ServidoresPage() {
   const [activeServiceId, setActiveServiceId] = useState<string | null>(selectedServiceId);
   const [teams, setTeams] = useState<MinistryTeam[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [myAssignments, setMyAssignments] = useState<MyAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -115,13 +123,25 @@ export default function ServidoresPage() {
     }
   }, []);
 
+  const fetchMyAssignments = useCallback(async () => {
+    if (!org?.id || !userProfile?.id) return;
+    const { data } = await supabase
+      .from("service_assignments")
+      .select("id, service_id, team_id, role_assigned")
+      .eq("organization_id", org.id)
+      .eq("user_id", userProfile.id)
+      .order("created_at", { ascending: true });
+    setMyAssignments(data || []);
+  }, [org, userProfile]);
+
   useEffect(() => {
     if (org?.id) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de cultos y equipos al montar
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de cultos, equipos y confirmaciones al montar
       fetchSchedules();
       fetchTeams();
+      fetchMyAssignments();
     }
-  }, [org?.id, fetchSchedules, fetchTeams]);
+  }, [org?.id, fetchSchedules, fetchTeams, fetchMyAssignments]);
 
   useEffect(() => {
     if (activeServiceId && org?.id) {
@@ -169,6 +189,19 @@ export default function ServidoresPage() {
 
     setProcessing(true);
     try {
+      // Evitar duplicados: un miembro no puede anotarse dos veces al mismo culto.
+      const { data: existing } = await supabase
+        .from("service_assignments")
+        .select("id")
+        .eq("service_id", selfServiceId)
+        .eq("user_id", userProfile.id)
+        .maybeSingle();
+      if (existing) {
+        alert("Ya confirmaste tu asistencia en este culto. Si quieres cambiarte de área, pídele al líder que te quite de la lista.");
+        setProcessing(false);
+        return;
+      }
+
       const selectedTeam = teams.find((t) => t.id === selfTeamId);
       const { error } = await supabase.from("service_assignments").insert([
         {
@@ -183,6 +216,7 @@ export default function ServidoresPage() {
       if (error) throw error;
       setActiveServiceId(selfServiceId);
       await fetchDataForService(selfServiceId);
+      await fetchMyAssignments();
     } catch (err) {
       alert("Error al inscribirse: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -313,6 +347,46 @@ export default function ServidoresPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* 1.5 Mis confirmaciones */}
+      {myAssignments.length > 0 && (
+        <div className="bg-sky-50/50 border border-sky-100 rounded-2xl p-6 shadow-sm space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">✅</span>
+            <div>
+              <h2 className="font-bold text-slate-800 text-base">Mis confirmaciones</h2>
+              <p className="text-xs text-slate-500">
+                Los cultos en los que ya estás anotado/a en {org?.name || "tu sede"}.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {myAssignments.map((ma) => {
+              const culto = schedules.find((s) => s.id === ma.service_id);
+              const team = teams.find((t) => t.id === ma.team_id);
+              const label = `${team?.name || ma.role_assigned}`;
+              return (
+                <div
+                  key={ma.id}
+                  className="flex items-center gap-2 rounded-xl border border-sky-200 bg-white px-3 py-2"
+                >
+                  <p className="text-xs font-bold text-slate-800">
+                    {culto?.title || "Culto"}
+                    <span className="text-slate-400 font-semibold">
+                      {" "}
+                      ({culto ? new Date(culto.service_date).toLocaleDateString("es-CL") : ""})
+                    </span>
+                  </p>
+                  <span className="text-[10px] font-bold text-sky-700 bg-sky-100 border border-sky-200 px-2 py-0.5 rounded-md">
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

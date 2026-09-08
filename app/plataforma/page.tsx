@@ -29,6 +29,13 @@ interface PlatformUser {
   organization_name: string | null;
 }
 
+interface DiagnosticCheck {
+  key: string;
+  label: string;
+  applied: boolean;
+  source: string;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   servidor: "Servidor",
   lider: "Líder",
@@ -45,7 +52,9 @@ export default function PlataformaPage() {
 
   const [orgs, setOrgs] = useState<PlatformOrg[]>([]);
   const [users, setUsers] = useState<PlatformUser[]>([]);
-  const [tab, setTab] = useState<"iglesias" | "usuarios" | "nueva">("iglesias");
+  const [tab, setTab] = useState<"iglesias" | "usuarios" | "nueva" | "diag">("iglesias");
+  const [diagnostics, setDiagnostics] = useState<DiagnosticCheck[] | null>(null);
+  const [diagError, setDiagError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingOrg, setSavingOrg] = useState<string | null>(null);
   const [genOrg, setGenOrg] = useState<string | null>(null);
@@ -82,6 +91,29 @@ export default function PlataformaPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial del panel
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (tab !== "diag" || diagnostics !== null) return;
+    const run = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      setDiagError(null);
+      try {
+        const res = await fetch("/api/platform/diagnostics", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "No se pudo ejecutar el diagnóstico.");
+        setDiagnostics(result.checks || []);
+      } catch (err) {
+        setDiagnostics([]);
+        setDiagError(err instanceof Error ? err.message : String(err));
+      }
+    };
+    run();
+  }, [tab, diagnostics]);
 
   if (orgLoading || (loading && orgs.length === 0)) {
     return (
@@ -244,6 +276,14 @@ export default function PlataformaPage() {
             }`}
           >
             ➕ Nueva iglesia
+          </button>
+          <button
+            onClick={() => setTab("diag")}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              tab === "diag" ? "bg-slate-900 text-white" : "bg-white text-slate-600 border border-slate-200"
+            }`}
+          >
+            🔍 Diagnóstico
           </button>
         </div>
 
@@ -432,6 +472,68 @@ export default function PlataformaPage() {
         )}
       {tab === "nueva" && (
           <SuperadminNewOrg onCreated={loadAll} />
+        )}
+
+        {tab === "diag" && (
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-slate-800 text-lg">🔍 Diagnóstico de la base de datos</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Verifica en vivo qué capacidades están activas en Supabase. Si algo aparece en
+                  rojo, copia el archivo indicado en el SQL Editor para aplicarlo.
+                </p>
+              </div>
+              {diagnostics && diagnostics.length > 0 && (
+                <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700">
+                  {diagnostics.filter((d) => d.applied).length}/{diagnostics.length} aplicaradas
+                </span>
+              )}
+            </div>
+
+            {diagError && (
+              <div className="p-4 rounded-2xl text-sm font-semibold bg-rose-50 border border-rose-200 text-rose-800">
+                {diagError}
+              </div>
+            )}
+
+            {!diagnostics && !diagError ? (
+              <p className="text-xs text-slate-400">Ejecutando diagnóstico...</p>
+            ) : (
+              <div className="space-y-2">
+                {diagnostics?.map((d) => (
+                  <div
+                    key={d.key}
+                    className={`flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 ${
+                      d.applied
+                        ? "bg-emerald-50/60 border-emerald-200"
+                        : "bg-rose-50/60 border-rose-200"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-800">
+                        {d.applied ? "✓" : "✗"} {d.label}
+                      </p>
+                      {!d.applied && (
+                        <p className="text-[11px] text-rose-700 mt-0.5">
+                          Aplicar en SQL Editor: supabase/migrations/{d.source}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-1 rounded-full border shrink-0 ${
+                        d.applied
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                          : "bg-rose-100 text-rose-700 border-rose-300"
+                      }`}
+                    >
+                      {d.applied ? "Activo" : "Falta"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

@@ -256,12 +256,19 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
           myRoles.some((r) => matchesArea(r, ESCUELA_AREA_TERMS));
       }
 
-      // Si es SuperAdmin, le permitimos usar el selector de iglesia guardado en localStorage
+      // El SuperAdmin siempre entra a una iglesia: usa la guardada en
+      // localStorage, la del subdominio por el que entró o la primera
+      // disponible. A él no le aplica la restricción "no entrar por URL".
       const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("selected_org_id") : null;
-      const targetOrgId = (currentRole === "superadmin" && savedOrgId) ? savedOrgId : finalUserOrgId;
+      const superTarget = availableOrgs.find((o) => o.id === savedOrgId) || organizationFromHost || availableOrgs[0] || null;
 
-      if (targetOrgId) {
-        const found = availableOrgs.find((o) => o.id === targetOrgId);
+      if (currentRole === "superadmin") {
+        setOrg(superTarget);
+        if (superTarget && typeof window !== "undefined" && savedOrgId !== superTarget.id) {
+          localStorage.setItem("selected_org_id", superTarget.id);
+        }
+      } else if (finalUserOrgId) {
+        const found = availableOrgs.find((o) => o.id === finalUserOrgId);
         // Un usuario no puede entrar a otra iglesia usando únicamente su URL.
         setOrg(organizationFromHost && found?.id !== organizationFromHost.id ? null : found || null);
       } else {
@@ -271,7 +278,8 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       // 2c. Visibilidad "pública" de los módulos: si la iglesia activó verlos,
       //     cualquier miembro autenticado los ve (en modo lectura). La gestión
       //     sigue siendo del ministerio (líderes + quienes sirven ahí).
-      const effectiveOrg = availableOrgs.find((o) => o.id === (targetOrgId || finalUserOrgId || ""));
+      const effectiveOrgId = currentRole === "superadmin" ? superTarget?.id : finalUserOrgId;
+      const effectiveOrg = availableOrgs.find((o) => o.id === (effectiveOrgId || ""));
       const publicAdoracion = !isModuleLeader && Boolean(finalUserOrgId) && effectiveOrg?.public_adoracion !== false;
       const publicEscuela = !isModuleLeader && Boolean(finalUserOrgId) && effectiveOrg?.public_escuela !== false;
       setCanSeeAdoracion(isModuleLeader || servesAdoracion || publicAdoracion);

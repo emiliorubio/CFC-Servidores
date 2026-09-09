@@ -63,6 +63,7 @@ function UsersPanel({ org }: { org: Organization }) {
   const [members, setMembers] = useState<ChurchMember[]>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const loadUsers = useCallback(async () => {
     const [profilesRes, teamsRes, membersRes] = await Promise.all([
@@ -95,6 +96,19 @@ function UsersPanel({ org }: { org: Organization }) {
         m.user_id === profile.id ||
         (m.email && profile.email && m.email.toLowerCase() === profile.email.toLowerCase())
     );
+
+  const filteredProfiles = profiles.filter((p) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (p.full_name || "").toLowerCase().includes(q) ||
+      (p.email || "").toLowerCase().includes(q)
+    );
+  });
+
+  const pendingCount = profiles.filter(
+    (p) => p.requested_role && p.requested_role !== p.role
+  ).length;
 
   const handleRoleChange = async (profile: ProfileRow, newRole: string) => {
     setSavingId(profile.id);
@@ -191,13 +205,32 @@ function UsersPanel({ org }: { org: Organization }) {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-800">Equipo registrado</h2>
-              <p className="text-xs text-slate-500 mt-1">{profiles.length} personas con cuenta en esta iglesia.</p>
+              <p className="text-xs text-slate-500 mt-1">
+                {profiles.length} personas con cuenta en esta iglesia.
+                {pendingCount > 0 && (
+                  <span className="ml-1 inline-block bg-sky-50 border border-sky-200 text-sky-700 rounded-full px-2 py-0.5 text-[10px] font-bold">
+                    ✋ {pendingCount} solicitud(es) pendiente(s)
+                  </span>
+                )}
+              </p>
             </div>
           </div>
+
+          <input
+            type="text"
+            placeholder="🔎 Buscar por nombre o correo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full max-w-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
 
           {profiles.length === 0 ? (
             <p className="rounded-xl bg-slate-50 border border-dashed border-slate-200 p-4 text-xs text-slate-500">
               Aún no hay usuarios registrados. Pide que se registren desde el enlace de la iglesia (Registrarse).
+            </p>
+          ) : filteredProfiles.length === 0 ? (
+            <p className="rounded-xl bg-slate-50 border border-dashed border-slate-200 p-4 text-xs text-slate-500">
+              No hay coincidencias con tu búsqueda.
             </p>
           ) : (
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -212,7 +245,7 @@ function UsersPanel({ org }: { org: Organization }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {profiles.map((profile) => {
+                  {filteredProfiles.map((profile) => {
                     const member = memberOf(profile);
                     return (
                       <tr key={profile.id} className="border-t border-slate-100 align-top">

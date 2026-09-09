@@ -161,6 +161,71 @@ export async function PATCH(request: NextRequest) {
     return await recomputarVenta(servicio, ventaId, user.organization_id);
   }
 
+  if (action === "updateVenta") {
+    const cambiosRaw = body.items;
+    const metodo = body?.metodo === "Tarjeta" ? "Tarjeta" : "Efectivo";
+    const cliente = typeof body?.cliente === "string" ? body.cliente.trim() : "";
+
+    const { data: items } = await servicio
+      .from("cafeteria_venta_items")
+      .select("id, nombre, precio, cantidad")
+      .eq("venta_id", ventaId)
+      .eq("organization_id", user.organization_id);
+
+    if (!items || items.length === 0) return apiError("La venta no tiene artículos.", 400);
+
+    const cambios = new Map<string, number>();
+    if (Array.isArray(cambiosRaw)) {
+      for (const c of cambiosRaw) {
+        const cant = Number(c?.cantidad);
+        if (Number.isInteger(cant) && cant >= 1) cambios.set(String(c.id), cant);
+      }
+    }
+    const cantidades: Record<string, number> = {};
+    for (const it of items) {
+      const cant = cambios.get(it.id);
+      if (cant === undefined) return apiError("Cantidad inválida para uno de los artículos.", 400);
+      cantidades[it.id] = cant;
+    }
+    for (const it of items) {
+      await servicio
+        .from("cafeteria_venta_items")
+        .update({ cantidad: cantidades[it.id] })
+        .eq("id", it.id)
+        .eq("venta_id", ventaId)
+        .eq("organization_id", user.organization_id);
+    }
+
+    const total = items.reduce((acc, i) => acc + Number(i.precio) * cantidades[i.id], 0);
+    const detalle = items.map((i) => `${cantidades[i.id]}x ${i.nombre}`).join(", ");
+
+    const { data: venta, error: errVenta } = await servicio
+      .from("cafeteria_ventas")
+      .select("transaccion_id")
+      .eq("id", ventaId)
+      .eq("organization_id", user.organization_id)
+      .maybeSingle();
+    if (errVenta || !venta) return apiError("Venta no encontrada.", 404);
+
+    await servicio
+      .from("cafeteria_ventas")
+      .update({ metodo, cliente: cliente || null, total })
+      .eq("id", ventaId)
+      .eq("organization_id", user.organization_id);
+
+    if (venta.transaccion_id) {
+      await servicio
+        .from("transacciones")
+        .update({
+          monto: total,
+          descripcion: `[Cafetería] ${detalle}${cliente ? ` · Cliente: ${cliente}` : ""} (Pago: ${metodo})`,
+        })
+        .eq("id", venta.transaccion_id);
+    }
+
+    return NextResponse.json({ ok: true, total });
+  }
+
   if (action === "deleteVenta") {
     const { data: venta, error: errVenta } = await servicio
       .from("cafeteria_ventas")

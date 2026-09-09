@@ -66,6 +66,7 @@ export default function CafeteriaKiosco() {
   const [editando, setEditando] = useState<Producto | "nuevo" | null>(null);
   const [borrandoProducto, setBorrandoProducto] = useState<Producto | null>(null);
   const [borrandoVenta, setBorrandoVenta] = useState<Venta | null>(null);
+  const [editandoVenta, setEditandoVenta] = useState<Venta | null>(null);
 
   const [scanAbierto, setScanAbierto] = useState(false);
   const [scanMsg, setScanMsg] = useState<string | null>(null);
@@ -190,6 +191,18 @@ export default function CafeteriaKiosco() {
     }
     setMensaje({ tipo: "ok", texto: "🗑️ Venta eliminada (su ingreso también se quitó de Finanzas)." });
     setBorrandoVenta(null);
+    cargarVentas();
+  };
+
+  const guardarEdicionVenta = async (payload: { items: { id: string; cantidad: number }[]; metodo: string; cliente: string }) => {
+    if (!editandoVenta) return;
+    const { ok, json } = await api("PATCH", { action: "updateVenta", ventaId: editandoVenta.id, ...payload });
+    if (!ok) {
+      setMensaje({ tipo: "error", texto: json.error || "No se pudo actualizar la venta." });
+      return;
+    }
+    setMensaje({ tipo: "ok", texto: `✅ Venta actualizada. Total corregido a ${formatearPesos(json.total)}` });
+    setEditandoVenta(null);
     cargarVentas();
   };
 
@@ -459,7 +472,7 @@ export default function CafeteriaKiosco() {
             ) : (
               <div className="space-y-3">
                 {ventas.map((v) => (
-                  <VentaCard key={v.id} venta={v} primaryColor={primaryColor} onBorrarItem={borrarItem} onBorrarVenta={() => setBorrandoVenta(v)} />
+                  <VentaCard key={v.id} venta={v} primaryColor={primaryColor} onBorrarItem={borrarItem} onBorrarVenta={() => setBorrandoVenta(v)} onEditarVenta={() => setEditandoVenta(v)} />
                 ))}
               </div>
             )}
@@ -652,6 +665,11 @@ export default function CafeteriaKiosco() {
         </div>
       )}
 
+      {/* Editar venta del día */}
+      {editandoVenta && (
+        <EditarVentaModal venta={editandoVenta} primaryColor={primaryColor} onGuardar={guardarEdicionVenta} onCerrar={() => setEditandoVenta(null)} />
+      )}
+
       {/* Escáner */}
       {scanAbierto && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/80 p-4">
@@ -741,11 +759,13 @@ function VentaCard({
   primaryColor,
   onBorrarItem,
   onBorrarVenta,
+  onEditarVenta,
 }: {
   venta: Venta;
   primaryColor: string;
   onBorrarItem: (venta: Venta, item: VentaItem) => void;
   onBorrarVenta: () => void;
+  onEditarVenta: () => void;
 }) {
   const [abierta, setAbierta] = useState(false);
   return (
@@ -767,9 +787,16 @@ function VentaCard({
         <div className="border-t border-slate-100 px-4 py-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Artículos ({venta.items.length})</p>
-            <button onClick={onBorrarVenta} className="rounded-md px-2 py-1 text-[11px] font-bold text-rose-500 hover:bg-rose-50">
-              🗑️ Eliminar venta
-            </button>
+            <div className="flex items-center gap-1">
+              {venta.items.length > 0 && (
+                <button onClick={onEditarVenta} className="rounded-md px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100">
+                  ✏️ Editar
+                </button>
+              )}
+              <button onClick={onBorrarVenta} className="rounded-md px-2 py-1 text-[11px] font-bold text-rose-500 hover:bg-rose-50">
+                🗑️ Eliminar venta
+              </button>
+            </div>
           </div>
           {venta.items.length === 0 ? (
             <p className="py-1 text-xs text-slate-400">Sin artículos.</p>
@@ -794,6 +821,113 @@ function VentaCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function EditarVentaModal({
+  venta,
+  primaryColor,
+  onGuardar,
+  onCerrar,
+}: {
+  venta: Venta;
+  primaryColor: string;
+  onGuardar: (payload: { items: { id: string; cantidad: number }[]; metodo: string; cliente: string }) => Promise<void>;
+  onCerrar: () => void;
+}) {
+  const [cliente, setCliente] = useState(venta.cliente || "");
+  const [metodo, setMetodo] = useState(venta.metodo === "Tarjeta" ? "Tarjeta" : "Efectivo");
+  const [cantidades, setCantidades] = useState<Record<string, number>>(() =>
+    venta.items.reduce((acc, it) => {
+      acc[it.id] = it.cantidad;
+      return acc;
+    }, {} as Record<string, number>)
+  );
+  const [guardando, setGuardando] = useState(false);
+
+  const cambiar = (id: string, delta: number) =>
+    setCantidades((c) => ({ ...c, [id]: Math.max(1, (c[id] || 1) + delta) }));
+
+  const total = venta.items.reduce((acc, it) => acc + Number(it.precio) * (cantidades[it.id] || 1), 0);
+
+  const guardar = async () => {
+    setGuardando(true);
+    await onGuardar({ items: venta.items.map((it) => ({ id: it.id, cantidad: cantidades[it.id] || 1 })), metodo, cliente: cliente.trim() });
+    setGuardando(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4" onClick={onCerrar}>
+      <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-1 text-sm font-bold text-slate-700">✏️ Editar venta de las {formatHora(venta.created_at)}</h3>
+        <p className="mb-4 text-[11px] text-slate-400">Ajusta cantidades, método de pago y cliente. El total y el ingreso de Finanzas se corrigen.</p>
+
+        <div className="mb-4 space-y-2">
+          {venta.items.map((it) => (
+            <div key={it.id} className="flex items-center gap-2 rounded-xl border border-slate-100 px-2.5 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-bold text-slate-700">{it.nombre}</p>
+                <p className="text-[10px] text-slate-400">{formatearPesos(Number(it.precio))} c/u</p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => cambiar(it.id, -1)} className="h-7 w-7 rounded-lg bg-slate-100 text-sm font-bold text-slate-600 hover:bg-slate-200">
+                  −
+                </button>
+                <span className="w-6 text-center text-sm font-bold text-slate-700">{cantidades[it.id] || 1}</span>
+                <button onClick={() => cambiar(it.id, 1)} className="h-7 w-7 rounded-lg text-sm font-bold text-white hover:opacity-90" style={{ backgroundColor: primaryColor }}>
+                  +
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <label className="mb-1 block text-[11px] font-bold text-slate-500">Cliente (opcional)</label>
+        <input
+          value={cliente}
+          onChange={(e) => setCliente(e.target.value)}
+          placeholder="Nombre del cliente"
+          className="mb-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-slate-400"
+        />
+
+        <label className="mb-1 block text-[11px] font-bold text-slate-500">Método de pago</label>
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          {METODOS.map((m) => (
+            <button
+              key={m}
+              onClick={() => setMetodo(m)}
+              className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
+                metodo === m ? "border-transparent text-white" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+              }`}
+              style={metodo === m ? { backgroundColor: primaryColor } : undefined}
+            >
+              {m === "Efectivo" ? "💵 Efectivo" : "💳 Tarjeta"}
+            </button>
+          ))}
+        </div>
+
+        <div className="mb-5 flex items-center justify-between border-t border-slate-100 pt-3">
+          <span className="text-xs font-bold text-slate-500">Total</span>
+          <span className="text-lg font-extrabold" style={{ color: primaryColor }}>
+            {formatearPesos(total)}
+          </span>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={onCerrar} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-500">
+            Cancelar
+          </button>
+          <button
+            onClick={guardar}
+            disabled={guardando}
+            style={{ backgroundColor: primaryColor }}
+            className="flex-1 rounded-xl py-2.5 text-xs font-bold text-white disabled:opacity-50"
+          >
+            {guardando ? "Guardando…" : "💾 Guardar cambios"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

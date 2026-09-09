@@ -46,6 +46,7 @@ export default function FinanzasPage() {
   const [mesActual, setMesActual] = useState<string>("");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modal, setModal] = useState<"movimiento" | null>(null);
+  const [editandoMov, setEditandoMov] = useState<Movimiento | null>(null);
   const [loading, setLoading] = useState(true);
   const [resumenPorCategoria, setResumenPorCategoria] = useState(false);
 
@@ -323,7 +324,10 @@ export default function FinanzasPage() {
                 ⬇ Exportar CSV
               </button>
               <button
-                onClick={() => setModal("movimiento")}
+                onClick={() => {
+                  setEditandoMov(null);
+                  setModal("movimiento");
+                }}
                 style={{ backgroundColor: primaryColor }}
                 className="text-xs font-bold px-3 py-2 rounded-xl text-white hover:opacity-90 transition-opacity"
               >
@@ -375,6 +379,16 @@ export default function FinanzasPage() {
                       {formatearPesos(m.monto)}
                     </p>
                     <button
+                      onClick={() => {
+                        setEditandoMov(m);
+                        setModal("movimiento");
+                      }}
+                      title="Editar movimiento"
+                      className="text-slate-400 hover:text-indigo-600 transition-colors"
+                    >
+                      ✏️
+                    </button>
+                    <button
                       onClick={() => eliminarMovimiento(m)}
                       title="Eliminar movimiento"
                       className="text-slate-400 hover:text-rose-600 transition-colors"
@@ -391,7 +405,10 @@ export default function FinanzasPage() {
 
       {/* Botón flotante */}
       <button
-        onClick={() => setModal("movimiento")}
+        onClick={() => {
+          setEditandoMov(null);
+          setModal("movimiento");
+        }}
         style={{ backgroundColor: primaryColor }}
         className="fixed bottom-6 right-6 text-white p-4 rounded-full shadow-lg hover:opacity-90 transition-opacity active:scale-95 z-40 font-bold text-xl"
         title="Nuevo movimiento"
@@ -402,9 +419,13 @@ export default function FinanzasPage() {
       {modal === "movimiento" && (
         <ModalMovimiento
           orgId={org.id}
+          mov={editandoMov}
           creadoPor={userProfile?.id || null}
           primaryColor={primaryColor}
-          onClose={() => setModal(null)}
+          onClose={() => {
+            setModal(null);
+            setEditandoMov(null);
+          }}
           onGuardado={cargarMovimientos}
         />
       )}
@@ -414,22 +435,24 @@ export default function FinanzasPage() {
 
 function ModalMovimiento({
   orgId,
+  mov,
   creadoPor,
   primaryColor,
   onClose,
   onGuardado,
 }: {
   orgId: string;
+  mov: Movimiento | null;
   creadoPor: string | null;
   primaryColor: string;
   onClose: () => void;
   onGuardado: () => Promise<void>;
 }) {
-  const [tipo, setTipo] = useState<TipoMov>("ingreso");
-  const [monto, setMonto] = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
+  const [tipo, setTipo] = useState<TipoMov>(mov?.tipo || "ingreso");
+  const [monto, setMonto] = useState(mov ? String(mov.monto) : "");
+  const [categoria, setCategoria] = useState(mov?.categoria || "");
+  const [descripcion, setDescripcion] = useState(mov?.descripcion || "");
+  const [fecha, setFecha] = useState(mov?.fecha || new Date().toISOString().split("T")[0]);
   const [guardando, setGuardando] = useState(false);
 
   const sugerencias = tipo === "ingreso" ? CAT_INGRESO : CAT_GASTO;
@@ -440,15 +463,16 @@ function ModalMovimiento({
     if (!montoNum || montoNum <= 0 || !descripcion.trim()) return;
 
     setGuardando(true);
-    const { error } = await supabase.from("transacciones").insert({
-      organization_id: orgId,
+    const campos = {
       tipo,
       categoria: categoria.trim() || null,
       descripcion: descripcion.trim(),
       monto: montoNum,
       fecha,
-      creado_por: creadoPor,
-    });
+    };
+    const { error } = mov
+      ? await supabase.from("transacciones").update(campos).eq("id", mov.id).eq("organization_id", orgId)
+      : await supabase.from("transacciones").insert({ ...campos, organization_id: orgId, creado_por: creadoPor });
     setGuardando(false);
 
     if (error) {
@@ -465,7 +489,7 @@ function ModalMovimiento({
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 transition-colors font-bold">
           ✕
         </button>
-        <h2 className="text-xl font-bold text-slate-800 mb-5">Nuevo Movimiento</h2>
+        <h2 className="text-xl font-bold text-slate-800 mb-5">{mov ? "✏️ Editar Movimiento" : "Nuevo Movimiento"}</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import RestrictedAccess from "@/components/RestrictedAccess";
@@ -87,6 +87,11 @@ export default function DirectorioPage() {
   const [phone, setPhone] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [teamId, setTeamId] = useState("");
+
+  // Importación masiva desde CSV
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ total: number; ok: number; skipped: number } | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const loadAll = useCallback(async () => {
     if (!org?.id) return;
@@ -284,6 +289,112 @@ export default function DirectorioPage() {
     await loadAll();
   };
 
+  const handleDownloadTemplate = () => {
+    downloadCsv(
+      `plantilla-directorio-${org?.slug || "iglesia"}.csv`,
+      ["Nombre", "WhatsApp", "Correo", "Cumpleaños"],
+      [["María José Soto", "+56 9 1234 5678", "maria@correo.cl", "1990-05-12"]]
+    );
+  };
+
+  const handleImportFile = async (file: File) => {
+    if (!org?.id) return;
+    setImporting(true);
+    setImportResult(null);
+    const text = await file.text();
+
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = "";
+    let inQuotes = false;
+    const clean = (s: string) => s.replace(/^\uFEFF/, "").trim();
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else inQuotes = false;
+        } else field += ch;
+      } else if (ch === '"') inQuotes = true;
+      else if (ch === "," || ch === ";") {
+        row.push(field);
+        field = "";
+      } else if (ch === "\n" || ch === "\r") {
+        if (ch === "\r" && text[i + 1] === "\n") i++;
+        row.push(field);
+        field = "";
+        if (row.some((c) => c.trim() !== "")) rows.push(row);
+        row = [];
+      } else field += ch;
+    }
+    row.push(field);
+    if (row.some((c) => c.trim() !== "")) rows.push(row);
+
+    if (rows.length === 0) {
+      setImporting(false);
+      setImportResult({ total: 0, ok: 0, skipped: 0 });
+      return;
+    }
+
+    const header = rows[0].map((h) => clean(h).toLowerCase());
+    const idxName = header.findIndex((h) => h.includes("nombre") || h.includes("name"));
+    const idxPhone = header.findIndex((h) => h.includes("whatsapp") || h.includes("telefono") || h.includes("fono"));
+    const idxEmail = header.findIndex((h) => h.includes("correo") || h.includes("email"));
+    const idxBirth = header.findIndex((h) => h.includes("cumple") || h.includes("nacimiento") || h.includes("birth"));
+
+    type ImportRow = {
+      organization_id: string;
+      full_name: string;
+      phone: string | null;
+      email: string | null;
+      birth_date: string | null;
+      role: null;
+    };
+    const payload: ImportRow[] = [];
+    const seen = new Set<string>();
+    let skipped = 0;
+    for (const r of rows.slice(1)) {
+      const fullName = clean(idxName >= 0 ? r[idxName] || "" : r[0] || "");
+      if (!fullName) {
+        skipped++;
+        continue;
+      }
+      const lower = fullName.toLowerCase();
+      if (seen.has(lower)) {
+        skipped++;
+        continue;
+      }
+      seen.add(lower);
+      payload.push({
+        organization_id: org.id,
+        full_name: fullName,
+        phone: clean(idxPhone >= 0 ? r[idxPhone] || "" : r[1] || "") || null,
+        email: clean(idxEmail >= 0 ? r[idxEmail] || "" : r[2] || "") || null,
+        birth_date: clean(idxBirth >= 0 ? r[idxBirth] || "" : r[3] || "") || null,
+        role: null,
+      });
+    }
+
+    const total = Math.max(rows.length - 1, 0);
+    if (payload.length === 0) {
+      setImporting(false);
+      setImportResult({ total, ok: 0, skipped });
+      return;
+    }
+
+    const { error } = await supabase.from("church_members").insert(payload);
+    setImporting(false);
+    if (error) {
+      alert("No se pudo importar: " + error.message);
+      return;
+    }
+    setImportResult({ total, ok: payload.length, skipped });
+    if (importFileRef.current) importFileRef.current.value = "";
+    await loadAll();
+  };
+
   if (orgLoading) {
     return (
       <div className="flex justify-center py-20 text-slate-500 text-sm">
@@ -312,6 +423,7 @@ export default function DirectorioPage() {
 
       {/* Alta de miembro (líderes / admin) */}
       {canManage && (
+        <>
         <form
           onSubmit={handleAddMember}
           className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm space-y-3"
@@ -384,6 +496,54 @@ export default function DirectorioPage() {
             </div>
           </div>
         </form>
+
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-bold text-slate-700">📥 Importar desde CSV</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Columnas: <b>Nombre</b>, WhatsApp, Correo, Cumpleaños (AAAA-MM-DD). La primera fila debe ser el encabezado.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 border border-indigo-200 bg-indigo-50 rounded-lg px-3 py-1.5 transition-colors whitespace-nowrap"
+              >
+                ⬇️ Plantilla
+              </button>
+              <label className="text-[11px] font-bold bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg px-3 py-1.5 cursor-pointer transition-colors whitespace-nowrap">
+                {importing ? "Importando…" : "Elegir archivo"}
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  disabled={importing}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleImportFile(f);
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+          {importResult && (
+            <p
+              className={`text-[11px] font-bold rounded-lg px-3 py-2 border ${
+                importResult.ok > 0
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-rose-50 text-rose-700 border-rose-200"
+              }`}
+            >
+              {importResult.ok > 0
+                ? `✅ ${importResult.ok} importado(s) de ${importResult.total} fila(s)${importResult.skipped > 0 ? ` (${importResult.skipped} omitida(s): sin nombre o repetidas)` : ""}.`
+                : `No se importó nada${importResult.skipped > 0 ? `: ${importResult.skipped} fila(s) omitida(s) por no tener nombre o estar repetidas` : ""}. Descarga la plantilla para ver el formato esperado.`}
+            </p>
+          )}
+        </div>
+        </>
       )}
 
       {/* Buscador y filtro */}

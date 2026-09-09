@@ -119,6 +119,7 @@ function ConsolidationForm({ org }: { org: Organization }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [filterEvent, setFilterEvent] = useState("");
+  const [editandoRecord, setEditandoRecord] = useState<ConsolidationRecord | null>(null);
 
   // Seguimiento por persona
   const [people, setPeople] = useState<Person[]>([]);
@@ -185,6 +186,27 @@ function ConsolidationForm({ org }: { org: Organization }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de registros al montar
     loadHistory();
   }, [loadHistory]);
+
+  const handleSaveRecord = async (payload: { full_name: string; phone: string; email: string; event_name: string; note: string }) => {
+    if (!org?.id || !editandoRecord) return;
+    const { error } = await supabase
+      .from("consolidations")
+      .update({
+        full_name: payload.full_name.trim(),
+        phone: normalizePhone(payload.phone),
+        email: payload.email.trim() || null,
+        event_name: payload.event_name.trim() || "Bautizos",
+        note: payload.note.trim() || null,
+      })
+      .eq("id", editandoRecord.id)
+      .eq("organization_id", org.id);
+    if (error) {
+      window.alert("No se pudo actualizar el registro: " + error.message);
+      return;
+    }
+    setEditandoRecord(null);
+    await loadHistory();
+  };
 
   const handleDeleteRecord = async (record: ConsolidationRecord) => {
     if (!org?.id) return;
@@ -854,6 +876,15 @@ function ConsolidationForm({ org }: { org: Organization }) {
                             </a>
                             {canDelete && (
                               <button
+                                onClick={() => setEditandoRecord(record)}
+                                title="Editar registro (corregir datos)"
+                                className="text-xs text-slate-400 hover:text-indigo-600 transition-colors"
+                              >
+                                ✏️
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
                                 onClick={() => handleDeleteRecord(record)}
                                 disabled={deletingId === record.id}
                                 title="Eliminar registro (corregir error)"
@@ -872,6 +903,117 @@ function ConsolidationForm({ org }: { org: Organization }) {
             )}
           </section>
         )}
+      </div>
+
+      {/* Modal editar registro */}
+      {editandoRecord && (
+        <EditarRecordModal
+          record={editandoRecord}
+          primaryColor={primaryColor}
+          onGuardar={handleSaveRecord}
+          onCerrar={() => setEditandoRecord(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditarRecordModal({
+  record,
+  primaryColor,
+  onGuardar,
+  onCerrar,
+}: {
+  record: ConsolidationRecord;
+  primaryColor: string;
+  onGuardar: (payload: { full_name: string; phone: string; email: string; event_name: string; note: string }) => Promise<void>;
+  onCerrar: () => void;
+}) {
+  const [fullName, setFullName] = useState(record.full_name);
+  const [phone, setPhone] = useState(record.phone);
+  const [email, setEmail] = useState(record.email || "");
+  const [eventName, setEventName] = useState(record.event_name);
+  const [note, setNote] = useState(record.note || "");
+  const [guardando, setGuardando] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName.trim() || normalizePhone(phone).length < 11) return;
+    setGuardando(true);
+    await onGuardar({ full_name: fullName, phone, email, event_name: eventName, note });
+    setGuardando(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onCerrar}>
+      <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onCerrar} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 transition-colors font-bold">
+          ✕
+        </button>
+        <h2 className="text-xl font-bold text-slate-800 mb-5">Editar registro</h2>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Nombre completo</label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">WhatsApp / Teléfono</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Correo electrónico</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Evento</label>
+            <select
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 bg-white"
+            >
+              {EVENT_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Nota (opcional)</label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={guardando}
+            style={{ backgroundColor: primaryColor }}
+            className="w-full text-white font-bold py-3 px-4 rounded-xl shadow-md hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {guardando ? "Guardando..." : "Guardar cambios"}
+          </button>
+        </form>
       </div>
     </div>
   );

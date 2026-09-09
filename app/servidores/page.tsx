@@ -79,9 +79,13 @@ export default function ServidoresPage() {
       setSchedules(data || []);
 
       if (data && data.length > 0) {
-        setActiveServiceId((prev) => prev || data[0].id);
-        setManualServiceId(data[0].id);
-        setSelfServiceId(data[0].id);
+        // Preferir el próximo culto futuro; si no hay, el más reciente.
+        const nowTs = Date.now();
+        const upcoming = data.filter((s) => new Date(s.service_date).getTime() >= nowTs);
+        const preferredId = upcoming[0]?.id || data[data.length - 1]?.id || data[0].id;
+        setActiveServiceId((prev) => prev || preferredId);
+        setManualServiceId(preferredId);
+        setSelfServiceId(preferredId);
       }
     } catch (err) {
       console.error("Error al cargar servicios:", err);
@@ -369,7 +373,7 @@ export default function ServidoresPage() {
             </h2>
           </div>
           <p className="text-xs text-slate-500">
-            Guarda al hermano en el directorio y lo asigna al culto seleccionado en{" "}
+            Registra a la persona y la asigna al culto seleccionado en{" "}
             <strong className="text-amber-800">{org?.name || "tu sede"}</strong>.
           </p>
 

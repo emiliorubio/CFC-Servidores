@@ -246,6 +246,21 @@ export default function HomePage() {
     return { total: grouped.length, perTeam, missing };
   };
 
+  // Confirmados de un culto cuya área coincide con palabras clave (alabanza, escuela, predicación…)
+  const teamCountByKeyword = (serviceId: string, keywords: string[]) =>
+    assignments.filter(
+      (a) =>
+        a.service_id === serviceId &&
+        a.team_id &&
+        teams.some((t) => t.id === a.team_id && keywords.some((k) => t.name.toLowerCase().includes(k)))
+    ).length;
+
+  // Resumen para el equipo (KPIs)
+  const upcomingSchedules = schedules.filter((s) => daysUntil(santiagoDateKey(s.service_date)) >= 0);
+  const upcomingIdsSet = new Set(upcomingSchedules.map((s) => s.id));
+  const upcomingAssignments = assignments.filter((a) => upcomingIdsSet.has(a.service_id)).length;
+  const nextUpcoming = [...upcomingSchedules].sort((a, b) => a.service_date.localeCompare(b.service_date))[0] || null;
+
   if (orgLoading || (loading && org?.id)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -359,6 +374,39 @@ export default function HomePage() {
                 </span>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* KPIs para el equipo */}
+      {userProfile && schedules.length > 0 && (
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Link
+            href="#cronograma"
+            className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 hover:shadow-md transition-shadow"
+          >
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">🗓️ Próximos cultos</p>
+            <p className="text-2xl font-extrabold text-indigo-700 mt-1">{upcomingSchedules.length}</p>
+            {nextUpcoming && (
+              <p className="text-[11px] text-slate-500 mt-0.5">Siguiente: {formatearFechaCulto(nextUpcoming.service_date)}</p>
+            )}
+          </Link>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">👥 Confirmaciones</p>
+            <p className="text-2xl font-extrabold text-slate-800 mt-1">{upcomingAssignments}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">servidores en cultos próximos</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">🎶 Alabanza en próximos</p>
+            <p className="text-2xl font-extrabold text-purple-700 mt-1">
+              {upcomingSchedules.filter((s) => teamCountByKeyword(s.id, ["adorac", "alabanz", "música", "banda", "sonido", "plataforma"]) > 0).length}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">de {upcomingSchedules.length} cultos</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">🎂 Cumpleaños</p>
+            <p className="text-2xl font-extrabold text-rose-700 mt-1">{birthdays.length}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">esta semana</p>
           </div>
         </section>
       )}
@@ -510,18 +558,57 @@ export default function HomePage() {
                   )}
 
                   <div className="grid gap-2">
-                    <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-2.5">
-                      <p className="text-xs font-bold text-blue-900">📖 Predicador / Altar</p>
-                      <p className="text-[11px] text-blue-400 italic mt-1">Información disponible en el módulo de servidores.</p>
-                    </div>
-                    <div className="bg-purple-50/60 border border-purple-100 rounded-xl p-2.5">
-                      <p className="text-xs font-bold text-purple-900">🎵 Equipo de Adoración</p>
-                      <p className="text-[11px] text-purple-400 italic mt-1">Revisa y confirma a los músicos asignados.</p>
-                    </div>
-                    <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-2.5">
-                      <p className="text-xs font-bold text-amber-950">👧 Escuela Dominical</p>
-                      <p className="text-[11px] text-amber-600/70 italic mt-1">Lecciones y profesores por confirmar.</p>
-                    </div>
+                    {(() => {
+                      const n = teamCountByKeyword(schedule.id, ["predic", "altar", "orador", "predica"]);
+                      return (
+                        <Link
+                          href={`/servidores?service_id=${schedule.id}`}
+                          className="bg-blue-50/60 border border-blue-100 rounded-xl p-2.5 hover:bg-blue-50 transition-colors"
+                        >
+                          <p className="text-xs font-bold text-blue-900">
+                            📖 Predicador / Altar
+                            <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full border ${n > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-white text-blue-400 border-blue-200"}`}>
+                              {n > 0 ? `${n} confirmado${n !== 1 ? "s" : ""}` : "sin confirmar"}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-blue-400 italic mt-1">Coordinar predicador y altar en Servidores.</p>
+                        </Link>
+                      );
+                    })()}
+                    {(() => {
+                      const n = teamCountByKeyword(schedule.id, ["adorac", "alabanz", "música", "banda", "sonido", "plataforma"]);
+                      return (
+                        <Link
+                          href="/adoracion"
+                          className="bg-purple-50/60 border border-purple-100 rounded-xl p-2.5 hover:bg-purple-50 transition-colors"
+                        >
+                          <p className="text-xs font-bold text-purple-900">
+                            🎵 Equipo de Adoración
+                            <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full border ${n > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-white text-purple-400 border-purple-200"}`}>
+                              {n > 0 ? `${n} músico${n !== 1 ? "s" : ""}` : "sin músicos"}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-purple-400 italic mt-1">Bandas, setlist y roles en Adoración.</p>
+                        </Link>
+                      );
+                    })()}
+                    {(() => {
+                      const n = teamCountByKeyword(schedule.id, ["escuela", "dominical", "infantil", "niño", "maestr", "profesor"]);
+                      return (
+                        <Link
+                          href="/escuela-dominical"
+                          className="bg-amber-50/60 border border-amber-100 rounded-xl p-2.5 hover:bg-amber-50 transition-colors"
+                        >
+                          <p className="text-xs font-bold text-amber-950">
+                            👧 Escuela Dominical
+                            <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full border ${n > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-white text-amber-500 border-amber-200"}`}>
+                              {n > 0 ? `${n} maestra${n !== 1 ? "s" : ""}` : "sin maestras"}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-amber-600/70 italic mt-1">Lecciones y maestras en Escuela Dominical.</p>
+                        </Link>
+                      );
+                    })()}
                   </div>
 
                   {(() => {

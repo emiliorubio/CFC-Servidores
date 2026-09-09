@@ -57,6 +57,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 function UsersPanel({ org }: { org: Organization }) {
+  const { refresh } = useOrganization();
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [teams, setTeams] = useState<MinistryTeam[]>([]);
   const [members, setMembers] = useState<ChurchMember[]>([]);
@@ -105,6 +106,7 @@ function UsersPanel({ org }: { org: Organization }) {
     } else {
       setMessage({ type: "success", text: `Rol de ${profile.full_name || "la persona"} actualizado a ${ROLE_LABELS[newRole]}.` });
       await loadUsers();
+      refresh();
     }
     setSavingId(null);
   };
@@ -123,6 +125,7 @@ function UsersPanel({ org }: { org: Organization }) {
     } else {
       setMessage({ type: "success", text: `Solicitud aprobada: ${profile.full_name || "la persona"} ahora es ${ROLE_LABELS[profile.requested_role]}.` });
       await loadUsers();
+      refresh();
     }
     setSavingId(null);
   };
@@ -154,6 +157,7 @@ function UsersPanel({ org }: { org: Organization }) {
     } else {
       setMessage({ type: "success", text: "Área asignada correctamente." });
       await loadUsers();
+      refresh();
     }
     setSavingId(null);
   };

@@ -40,6 +40,7 @@ interface OrgContextType {
   canSeeEscuela: boolean;
   canManageEscuela: boolean;
   switchOrganization: (orgId: string) => void;
+  refresh: () => void;
 }
 
 // Un servidor que sirve en un módulo (aunque no sea líder) también accede a él.
@@ -122,6 +123,7 @@ const OrganizationContext = createContext<OrgContextType>({
   canSeeEscuela: false,
   canManageEscuela: false,
   switchOrganization: () => {},
+  refresh: () => {},
 });
 
 export function OrganizationProvider({ children }: { children: React.ReactNode }) {
@@ -322,6 +324,33 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     loadData();
   }, [loadData]);
 
+  // Re-evalúa la sesión/papel cada vez que haya cambios de autenticación
+  // (login, logout, refresh de token, datos del usuario) o cuando la ventana
+  // recupera el foco. Así, al cambiar de usuario o de rol, la interfaz se
+  // actualiza sin obligar a recargar la página.
+  const refresh = useCallback(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === "SIGNED_IN" ||
+        event === "SIGNED_OUT" ||
+        event === "TOKEN_REFRESHED" ||
+        event === "USER_UPDATED"
+      ) {
+        refresh();
+      }
+    });
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      subscription.subscription.unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refresh]);
+
   const switchOrganization = (orgId: string) => {
     const target = allOrgs.find((o) => o.id === orgId);
     if (target) {
@@ -334,7 +363,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   return (
     <OrganizationContext.Provider
-      value={{ org, allOrgs, userRole, userProfile, loading, canSeeAdoracion, canSeeEscuela, canManageEscuela, switchOrganization }}
+      value={{ org, allOrgs, userRole, userProfile, loading, canSeeAdoracion, canSeeEscuela, canManageEscuela, switchOrganization, refresh }}
     >
       {children}
     </OrganizationContext.Provider>

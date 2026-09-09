@@ -135,6 +135,26 @@ export default function FinanzasPage() {
   const maxCategoria =
     porCategoria.reduce((acc, [, v]) => Math.max(acc, v.ingresos, v.gastos), 0) || 1;
 
+  // Ingresos y gastos agrupados por mes (últimos 6 con movimiento), para el gráfico.
+  const resumenMensual = useMemo(() => {
+    const mapa = new Map<string, { ingresos: number; gastos: number }>();
+    movimientos.forEach((m) => {
+      const k = mesKey(m.fecha);
+      if (!k) return;
+      const entry = mapa.get(k) || { ingresos: 0, gastos: 0 };
+      if (m.tipo === "ingreso") entry.ingresos += m.monto;
+      else entry.gastos += m.monto;
+      mapa.set(k, entry);
+    });
+    return [...mapa.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .slice(0, 6)
+      .map(([key, v]) => ({ key, label: mesLabel(key), ...v }));
+  }, [movimientos]);
+
+  const maxMensual =
+    resumenMensual.reduce((acc, r) => Math.max(acc, r.ingresos, r.gastos), 1) || 1;
+
   const eliminarMovimiento = async (mov: Movimiento) => {
     if (!org) return;
     if (!window.confirm(`¿Eliminar el movimiento "${mov.descripcion}" por ${formatearPesos(mov.monto)}?`)) return;
@@ -233,6 +253,48 @@ export default function FinanzasPage() {
             <p className="text-2xl font-extrabold mt-2">{formatearPesos(saldo)}</p>
           </div>
         </div>
+
+        {/* Gráfico: ingresos vs gastos por mes */}
+        <section className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">📈 Ingresos vs Gastos por mes</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Últimos {resumenMensual.length} mes(es) con movimientos registrados.
+            </p>
+          </div>
+
+          {resumenMensual.length === 0 ? (
+            <p className="rounded-xl bg-slate-50 border border-dashed border-slate-200 p-4 text-xs text-slate-500">
+              Aún no hay movimientos para graficar.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {resumenMensual.map((r) => (
+                <div key={r.key} className="space-y-2">
+                  <p className="text-center text-[11px] font-bold text-slate-600 capitalize truncate" title={r.label}>
+                    {r.label.split(" ")[0]}
+                  </p>
+                  <div className="flex h-32 items-end justify-center gap-1.5 rounded-xl bg-slate-50 border border-slate-100 px-2 pt-2">
+                    <div
+                      title={`Ingresos ${formatearPesos(r.ingresos)}`}
+                      className="w-1/2 rounded-t-md bg-emerald-500 min-h-[3px] transition-all"
+                      style={{ height: `${Math.max((r.ingresos / maxMensual) * 100, 3)}%` }}
+                    />
+                    <div
+                      title={`Gastos ${formatearPesos(r.gastos)}`}
+                      className="w-1/2 rounded-t-md bg-rose-500 min-h-[3px] transition-all"
+                      style={{ height: `${Math.max((r.gastos / maxMensual) * 100, 3)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] font-bold text-emerald-600">+{(r.ingresos / 1000).toFixed(0)}k</span>
+                    <span className="text-[10px] font-bold text-rose-600">-{(r.gastos / 1000).toFixed(0)}k</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

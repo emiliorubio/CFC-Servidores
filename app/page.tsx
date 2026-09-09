@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
-import { formatearFechaCulto, horaCulto } from "@/lib/format";
+import { formatearFechaCulto, horaCulto, downloadCsv } from "@/lib/format";
 import Link from "next/link";
 
 interface ServiceSchedule {
@@ -66,6 +66,14 @@ export default function HomePage() {
 
   // Eliminar un culto (solo admin / pastor)
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Editar un culto (título, fecha, hora, descripción) incluido los pasados
+  const [editando, setEditando] = useState<ServiceSchedule | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("10:00");
+  const [editDescription, setEditDescription] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Generación automática de cultos según el horario de la iglesia
   const [generating, setGenerating] = useState<number | null>(null);
@@ -235,6 +243,56 @@ export default function HomePage() {
       return;
     }
     setReloadKey((k) => k + 1);
+  };
+
+  const openEdit = (schedule: ServiceSchedule) => {
+    const d = new Date(schedule.service_date);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    setEditTitle(schedule.title);
+    setEditDate(local.slice(0, 10));
+    setEditTime(local.slice(11, 16));
+    setEditDescription(schedule.description || "");
+    setEditando(schedule);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!org?.id || !editando || !editTitle.trim() || !editDate) return;
+    setSavingEdit(true);
+    const { error } = await supabase
+      .from("service_schedules")
+      .update({
+        title: editTitle.trim(),
+        service_date: new Date(`${editDate}T${editTime || "10:00"}:00`).toISOString(),
+        description: editDescription.trim() || null,
+      })
+      .eq("id", editando.id)
+      .eq("organization_id", org.id);
+    setSavingEdit(false);
+    if (error) {
+      alert("No se pudo actualizar el culto: " + error.message);
+      return;
+    }
+    setEditando(null);
+    setReloadKey((k) => k + 1);
+  };
+
+  const exportarCronograma = () => {
+    if (!org) return;
+    downloadCsv(
+      `cronograma-${org.slug || "iglesia"}.csv`,
+      ["Fecha", "Culto", "Hora", "Total confirmados", "Predicador", "Alabanza", "Escuela", "Descripción"],
+      schedulesVisibles.map((s) => [
+        formatearFechaCulto(s.service_date),
+        s.title,
+        horaCulto(s.service_date),
+        assignmentCounts(s.id).total,
+        teamCountByKeyword(s.id, ["predic", "altar", "orador", "predica"]),
+        teamCountByKeyword(s.id, ["adorac", "alabanz", "música", "banda", "sonido", "plataforma"]),
+        teamCountByKeyword(s.id, ["escuela", "dominical", "infantil", "niño", "maestr", "profesor"]),
+        s.description || "",
+      ])
+    );
   };
 
   const assignmentCounts = (serviceId: string) => {
@@ -480,7 +538,15 @@ export default function HomePage() {
             </span>
           </h2>
 
-          <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportarCronograma}
+              disabled={schedulesVisibles.length === 0}
+              className="text-xs font-bold px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white transition-colors"
+            >
+              ⬇️ CSV
+            </button>
+            <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1">
             <button
               onClick={() => setVista("proximos")}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
@@ -499,6 +565,7 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+      </div>
 
         {schedulesVisibles.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-sm">
@@ -527,16 +594,27 @@ export default function HomePage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-start gap-2">
                     <h3 className="text-base font-bold text-slate-800">{schedule.title}</h3>
-                    {canDeleteCulto && (
-                      <button
-                        onClick={() => handleDeleteSchedule(schedule)}
-                        disabled={deletingId === schedule.id}
-                        title="Eliminar culto"
-                        className="text-xs text-slate-300 hover:text-red-500 transition-colors shrink-0"
-                      >
-                        {deletingId === schedule.id ? "..." : "🗑️"}
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isAdminOrLider && (
+                        <button
+                          onClick={() => openEdit(schedule)}
+                          title="Editar culto"
+                          className="text-xs text-slate-300 hover:text-indigo-500 transition-colors"
+                        >
+                          ✏️
+                        </button>
+                      )}
+                      {canDeleteCulto && (
+                        <button
+                          onClick={() => handleDeleteSchedule(schedule)}
+                          disabled={deletingId === schedule.id}
+                          title="Eliminar culto"
+                          className="text-xs text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          {deletingId === schedule.id ? "..." : "🗑️"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <p className="text-xs text-indigo-600 font-semibold mt-1 flex flex-wrap items-center gap-x-2">
                     <span>🗓️ {formatearFechaCulto(schedule.service_date)}</span>
@@ -725,6 +803,87 @@ export default function HomePage() {
                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors"
                 >
                   {saving ? "Guardando..." : "Crear Culto"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    {/* Modal para Editar Servicio */}
+      {editando && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-100">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-slate-800">✏️ Editar Culto</h3>
+              <button
+                onClick={() => setEditando(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Título del Servicio</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ej. Culto Dominical / Noche de Milagros"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Fecha del Servicio</label>
+                  <input
+                    type="date"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Hora del Servicio</label>
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Descripción / Notas (Opcional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Información relevante para los servidores..."
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditando(null)}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors"
+                >
+                  {savingEdit ? "Guardando..." : "Guardar Cambios"}
                 </button>
               </div>
             </form>

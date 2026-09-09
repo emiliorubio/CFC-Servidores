@@ -26,9 +26,17 @@ interface Assignment {
   user_id?: string;
   manual_name?: string | null;
   role_assigned: string;
+  note?: string | null;
   profiles?: {
     full_name: string;
   } | null;
+}
+
+interface ChurchMember {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  user_id: string | null;
 }
 
 interface MyAssignment {
@@ -65,6 +73,11 @@ export default function ServidoresPage() {
   const [newCultoTime, setNewCultoTime] = useState("10:00");
 
   const [selectedFilterArea, setSelectedFilterArea] = useState("all");
+
+  // Directorio (para recordatorios por WhatsApp)
+  const [members, setMembers] = useState<ChurchMember[]>([]);
+  const [recordatorioAbierto, setRecordatorioAbierto] = useState(false);
+  const [copiandoRecordatorio, setCopiandoRecordatorio] = useState(false);
 
   const fetchSchedules = useCallback(async () => {
     if (!org?.id) return;
@@ -112,6 +125,20 @@ export default function ServidoresPage() {
     }
   }, [org]);
 
+  const fetchMembers = useCallback(async () => {
+    if (!org?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from("church_members")
+        .select("id, full_name, phone, user_id")
+        .eq("organization_id", org.id);
+      if (error) throw error;
+      setMembers((data || []) as ChurchMember[]);
+    } catch (err) {
+      console.error("Error al cargar el directorio:", err);
+    }
+  }, [org]);
+
   const fetchDataForService = useCallback(async (serviceId: string) => {
     try {
       const { data: assignData, error: assignError } = await supabase
@@ -141,12 +168,13 @@ export default function ServidoresPage() {
 
   useEffect(() => {
     if (org?.id) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de cultos, equipos y confirmaciones al montar
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de cultos, equipos, directorio y confirmaciones al montar
       fetchSchedules();
       fetchTeams();
+      fetchMembers();
       fetchMyAssignments();
     }
-  }, [org?.id, fetchSchedules, fetchTeams, fetchMyAssignments]);
+  }, [org?.id, fetchSchedules, fetchTeams, fetchMembers, fetchMyAssignments]);
 
   useEffect(() => {
     if (activeServiceId && org?.id) {
@@ -291,6 +319,64 @@ export default function ServidoresPage() {
     }
     if (activeServiceId) await fetchDataForService(activeServiceId);
     await fetchMyAssignments();
+  };
+
+  const handleSetNote = async (assignment: Assignment) => {
+    if (!org?.id) return;
+    const actual = assignment.note || "";
+    const valor = window.prompt(`Nota / indicación para ${assignmentName(assignment)}:`, actual);
+    if (valor === null) return;
+    const limpio = valor.trim();
+    const { error } = await supabase
+      .from("service_assignments")
+      .update({ note: limpio || null })
+      .eq("id", assignment.id)
+      .eq("organization_id", org.id);
+    if (error) {
+      alert("No se pudo guardar la nota: " + error.message);
+      return;
+    }
+    if (activeServiceId) await fetchDataForService(activeServiceId);
+  };
+
+  const waDigits = (phone: string) => {
+    const d = phone.replace(/\D/g, "");
+    if (d.length < 9) return null;
+    if (d.startsWith("56")) return d;
+    if (d.startsWith("0")) return "56" + d.slice(1);
+    return "56" + d;
+  };
+
+  const recordatorioText = (nombre: string) => {
+    const culto = schedules.find((s) => s.id === activeServiceId);
+    const lines = [
+      `Hola ${nombre}! 🙏`,
+      `El culto "${culto?.title || "de esta semana"} se acerca"${culto ? ` (${formatearFechaCorta(culto.service_date)})` : ""} y aún no tienes tu confirmación en ${org?.name || "la iglesia"}.`,
+      "¿Podrías confirmar si puedes servir? ¡Te esperamos! 🙌",
+    ];
+    return lines.join("\n");
+  };
+
+  const confirmedUserIds = new Set(
+    assignments.filter((a) => a.user_id).map((a) => a.user_id as string)
+  );
+  const pendingMembers = members.filter((m) => !(m.user_id && confirmedUserIds.has(m.user_id)) && m.phone);
+  const pendingWithWa = pendingMembers
+    .map((m) => ({ ...m, wa: waDigits(m.phone || "") }))
+    .filter((m) => m.wa);
+
+  const copiarListaRecordatorio = async () => {
+    if (pendingMembers.length === 0) return;
+    const text = pendingMembers
+      .map((m) => `${m.full_name}${m.phone ? ` — ${m.phone}` : ""}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiandoRecordatorio(true);
+      setTimeout(() => setCopiandoRecordatorio(false), 2000);
+    } catch {
+      window.alert("No se pudo copiar la lista. Revisa los permisos del portapapeles.");
+    }
   };
 
   const isLeaderOrAdmin =
@@ -674,6 +760,13 @@ export default function ServidoresPage() {
               >
                 📱 Avisar por WhatsApp
               </button>
+              <button
+                onClick={() => setRecordatorioAbierto(true)}
+                disabled={!activeServiceId}
+                className="text-[10px] font-bold px-2.5 py-1.5 rounded-xl bg-sky-500 text-white hover:bg-sky-600 disabled:bg-slate-200 disabled:text-slate-400 transition-colors"
+              >
+                🔔 Recordar faltantes
+              </button>
             </div>
           </div>
 
@@ -721,17 +814,29 @@ export default function ServidoresPage() {
                         <p className="text-[11px] text-indigo-600 font-semibold mt-0.5">
                           {team?.name || assignment.role_assigned}
                         </p>
+                        {assignment.note && (
+                          <p className="text-[11px] text-slate-500 italic mt-0.5">🗒️ {assignment.note}</p>
+                        )}
                       </div>
                       <span className="text-[10px] rounded-full bg-emerald-100 text-emerald-700 font-bold px-2 py-1">Confirmado</span>
                       {isLeaderOrAdmin && (
-                        <button
-                          onClick={() => handleRemoveAssignment(assignment)}
-                          disabled={processing}
-                          title="Quitar a este servidor de la lista"
-                          className="text-xs text-slate-300 hover:text-red-500 transition-colors disabled:opacity-40"
-                        >
-                          🗑️
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleSetNote(assignment)}
+                            title="Nota / indicación para este servidor"
+                            className="text-xs text-slate-300 hover:text-indigo-500 transition-colors disabled:opacity-40"
+                          >
+                            🗒️
+                          </button>
+                          <button
+                            onClick={() => handleRemoveAssignment(assignment)}
+                            disabled={processing}
+                            title="Quitar a este servidor de la lista"
+                            className="text-xs text-slate-300 hover:text-red-500 transition-colors disabled:opacity-40"
+                          >
+                            🗑️
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -747,6 +852,82 @@ export default function ServidoresPage() {
           )}
         </div>
       </div>
+
+      {/* Modal: recordar por WhatsApp a quienes faltan */}
+      {recordatorioAbierto && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setRecordatorioAbierto(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-slate-800">🔔 Recordar a quienes faltan</h3>
+              <button
+                onClick={() => setRecordatorioAbierto(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {(() => {
+              const culto = schedules.find((s) => s.id === activeServiceId);
+              return (
+                <p className="text-xs text-slate-500">
+                  {culto?.title || "Culto"}
+                  {culto ? ` (${formatearFechaCorta(culto.service_date)})` : ""} · {pendingWithWa.length} miembro(s) del directorio con WhatsApp sin confirmar. Abre cada enlace para enviarle el recordatorio.
+                </p>
+              );
+            })()}
+
+            {pendingWithWa.length === 0 ? (
+              <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-6 text-center">
+                <p className="text-3xl mb-2">🎉</p>
+                <p className="text-xs text-emerald-800 font-bold">
+                  ¡Todos los miembros con WhatsApp ya confirmaron en este culto!
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500">Lista del directorio sin confirmar</span>
+                  <button
+                    onClick={copiarListaRecordatorio}
+                    disabled={pendingMembers.length === 0}
+                    className="text-[10px] font-bold bg-slate-900 hover:bg-slate-700 text-white px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
+                  >
+                    {copiandoRecordatorio ? "✓ Lista copiada" : "📋 Copiar lista"}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {pendingWithWa.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-800 truncate">👤 {m.full_name}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{m.phone}</p>
+                      </div>
+                      <a
+                        href={`https://wa.me/${m.wa}?text=${encodeURIComponent(recordatorioText(m.full_name))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-xl transition-colors shrink-0"
+                      >
+                        📱 Recordar
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

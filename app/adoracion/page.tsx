@@ -68,6 +68,7 @@ interface AdoracionSong {
   artist?: string | null;
   key_note?: string | null;
   song_url?: string | null;
+  posicion?: number;
   created_at?: string;
 }
 
@@ -185,7 +186,7 @@ export default function AdoracionPage() {
     // 7. Cargar Canciones / Setlist
     const serviceIds = (serviceData || []).map((service) => service.id);
     const { data: songsData } = serviceIds.length > 0
-      ? await supabase.from("service_songs").select("*").eq("organization_id", org.id).in("service_schedule_id", serviceIds).order("created_at", { ascending: true })
+      ? await supabase.from("service_songs").select("*").eq("organization_id", org.id).in("service_schedule_id", serviceIds).order("posicion", { ascending: true }).order("created_at", { ascending: true })
       : { data: [] };
     if (songsData) {
       const grouped = songsData.reduce((acc: Record<string, AdoracionSong[]>, song: AdoracionSong) => {
@@ -222,12 +223,13 @@ export default function AdoracionPage() {
       return;
     }
 
-    // Evitar duplicados: no inscribirse dos veces al mismo culto.
+    // Evitar duplicados: no inscribirse dos veces al mismo culto y área.
     const { data: existing } = await supabase
       .from("service_assignments")
       .select("id")
       .eq("service_id", selfCultoId)
       .eq("user_id", userProfile.id)
+      .eq("team_id", adoracionTeamId)
       .maybeSingle();
     if (existing) {
       alert("Ya estás inscrito/a en la alabanza de este culto. Si quieres cambiar tu instrumento, pídele al director que te reasigne.");
@@ -359,6 +361,25 @@ export default function AdoracionPage() {
     }
   };
 
+  // Subir / bajar una canción dentro del setlist de un culto
+  const handleMoveSong = async (cultoId: string, songId: string, dir: -1 | 1) => {
+    if (!org?.id) return;
+    const list = [...(setlists[cultoId] || [])].sort(
+      (a, b) => (a.posicion ?? 0) - (b.posicion ?? 0) || (a.created_at || "").localeCompare(b.created_at || "")
+    );
+    const idx = list.findIndex((s) => s.id === songId);
+    const swapIdx = idx + dir;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return;
+    const [moved] = list.splice(idx, 1);
+    list.splice(swapIdx, 0, moved);
+    await Promise.all(
+      list.map((s, i) =>
+        supabase.from("service_songs").update({ posicion: i + 1 }).eq("id", s.id).eq("organization_id", org.id)
+      )
+    );
+    await loadAllData();
+  };
+
   if (!orgLoading && (!canSeeAdoracion || !org)) {
     return (
       <RestrictedAccess message="El módulo de adoración está disponible para el equipo de alabanza (líderes, administradores y músicos/as con iglesia asignada)." />
@@ -396,6 +417,12 @@ export default function AdoracionPage() {
 
   const bandOf = (cultoId: string) => assignments.filter((a) => a.service_schedule_id === cultoId && isBanda(a));
 
+  // Roles del ministerio que aún no tienen músico confirmado para un culto
+  const rolesFaltantes = (cultoId: string) => {
+    const ocupados = bandOf(cultoId).map((a) => (a.area || "").replace("Adoración: ", "").trim());
+    return ADORACION_ROLES.filter((rol) => !ocupados.some((o) => o === rol || o.includes(rol) || rol.includes(o)));
+  };
+
   const totalSongs = Object.values(setlists).reduce((acc, list) => acc + list.length, 0);
   const totalBand = assignments.filter(isBanda).length;
 
@@ -425,6 +452,11 @@ export default function AdoracionPage() {
         const tono = s.key_note ? ` [Tono: ${s.key_note}]` : "";
         lines.push(`  ${i + 1}. ${s.title}${artist}${tono}`);
       });
+    }
+
+    const faltantes = rolesFaltantes(culto.id);
+    if (faltantes.length > 0) {
+      lines.push("", `⚠️ Faltan por confirmar: ${faltantes.join(", ")}`);
     }
 
     lines.push("", "¡Los esperamos!");
@@ -527,6 +559,18 @@ export default function AdoracionPage() {
                     ))}
                   </div>
                 )}
+                {rolesFaltantes(nextCulto.id).length > 0 && (
+                  <div className="rounded-2xl bg-orange-50 border border-orange-200 p-3">
+                    <p className="text-[11px] font-bold text-orange-800 uppercase tracking-wide mb-1.5">⚠️ Roles sin confirmar</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {rolesFaltantes(nextCulto.id).map((rol) => (
+                        <span key={rol} className="text-[10px] font-semibold text-orange-800 bg-orange-100 border border-orange-200 rounded-lg px-2 py-0.5">
+                          {rol}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Setlist del próximo culto */}
@@ -548,11 +592,33 @@ export default function AdoracionPage() {
                             </span>
                           )}
                         </div>
-                        {song.song_url && (
-                          <a href={song.song_url} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-2 py-1 rounded-lg transition-colors">
-                            ▶️ Link
-                          </a>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {isLiderOrAdmin && (
+                            <>
+                              <button
+                                onClick={() => handleMoveSong(nextCulto.id, song.id, -1)}
+                                disabled={idx === 0}
+                                title="Subir en el setlist"
+                                className="text-xs text-indigo-500 hover:text-indigo-700 disabled:opacity-25 px-1"
+                              >
+                                ▲
+                              </button>
+                              <button
+                                onClick={() => handleMoveSong(nextCulto.id, song.id, 1)}
+                                disabled={idx === setlists[nextCulto.id].length - 1}
+                                title="Bajar en el setlist"
+                                className="text-xs text-indigo-500 hover:text-indigo-700 disabled:opacity-25 px-1"
+                              >
+                                ▼
+                              </button>
+                            </>
+                          )}
+                          {song.song_url && (
+                            <a href={song.song_url} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-2 py-1 rounded-lg transition-colors">
+                              ▶️ Link
+                            </a>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -652,6 +718,40 @@ export default function AdoracionPage() {
               Confirmar en Alabanza
             </button>
           </form>
+
+          {/* MIS COMPROMISOS */}
+          {(() => {
+            const misCompromisos = assignments.filter((a) => isBanda(a) && a.profile_id === userProfile?.id);
+            if (misCompromisos.length === 0) return null;
+            return (
+              <div className="rounded-2xl bg-purple-50/70 border border-purple-200 p-4 space-y-2">
+                <p className="text-[11px] font-bold text-purple-800 uppercase tracking-wider">🎸 Mis compromisos</p>
+                <div className="grid gap-1.5">
+                  {misCompromisos.map((a) => {
+                    const culto = cultos.find((c) => c.id === a.service_schedule_id);
+                    return (
+                      <div key={a.id} className="flex justify-between items-center text-xs bg-white border border-purple-100 rounded-xl px-3 py-2">
+                        <div>
+                          <span className="font-semibold text-slate-800">
+                            {culto ? `${culto.title || culto.service_type} — ${cultoDetalle(culto).fecha}` : "Culto"}
+                          </span>
+                          <span className="ml-2 text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                            {a.area?.replace("Adoración: ", "") || "Músico"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveAssignment(a.id)}
+                          className="text-[10px] text-red-400 hover:text-red-300 font-bold"
+                        >
+                          ✕ Quitar
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* REGISTRO DIRECTO DE MÚSICO (DIRECTOR / LÍDER) */}
@@ -800,6 +900,26 @@ export default function AdoracionPage() {
                                 </div>
 
                                 <div className="flex items-center gap-2">
+                                  {isLiderOrAdmin && (
+                                    <>
+                                      <button
+                                        onClick={() => handleMoveSong(culto.id, song.id, -1)}
+                                        disabled={idx === 0}
+                                        title="Subir en el setlist"
+                                        className="text-xs text-indigo-400 hover:text-indigo-600 disabled:opacity-25 px-1"
+                                      >
+                                        ▲
+                                      </button>
+                                      <button
+                                        onClick={() => handleMoveSong(culto.id, song.id, 1)}
+                                        disabled={idx === currentSetlist.length - 1}
+                                        title="Bajar en el setlist"
+                                        className="text-xs text-indigo-400 hover:text-indigo-600 disabled:opacity-25 px-1"
+                                      >
+                                        ▼
+                                      </button>
+                                    </>
+                                  )}
                                   {song.song_url && (
                                     <a
                                       href={song.song_url}

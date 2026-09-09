@@ -43,6 +43,11 @@ function formatHora(iso: string) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- instancia del escáner (introducida con import dinámico)
 let scannerInstance: any = null;
 
+// Evita que un QR leído de forma continua (el teléfono pasa por encima más de
+// un segundo) agregue el producto varias veces.
+const COOLDOWN_ESCANEO_MS = 1500;
+let ultimoEscanerRef: { codigo: string; tiempo: number } | null = null;
+
 export default function CafeteriaKiosco() {
   const { org, loading, userRole, userProfile } = useOrganization();
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -247,7 +252,14 @@ export default function CafeteriaKiosco() {
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 240, height: 240 } },
         async (txt: string) => {
-          const p = productos.find((x) => x.id === txt.trim());
+          const codigo = txt.trim();
+          const ahora = Date.now();
+          const previo = ultimoEscanerRef;
+          if (previo && previo.codigo === codigo && ahora - previo.tiempo < COOLDOWN_ESCANEO_MS) {
+            return;
+          }
+          ultimoEscanerRef = { codigo, tiempo: ahora };
+          const p = productos.find((x) => x.id === codigo);
           if (p) {
             if (!p.activo) {
               setScanMsg(`⚠️ "${p.nombre}" está oculto del menú.`);

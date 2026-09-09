@@ -92,6 +92,7 @@ function formatFullDate(raw: string) {
 function ConsolidationForm({ org }: { org: Organization }) {
   const { userProfile, userRole } = useOrganization();
   const isMember = Boolean(userProfile);
+  const canDelete = userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   const isLeader =
     userRole === "admin" ||
     userRole === "superadmin" ||
@@ -112,6 +113,7 @@ function ConsolidationForm({ org }: { org: Organization }) {
   const [allRecords, setAllRecords] = useState<ConsolidationRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingPerson, setDeletingPerson] = useState<string | null>(null);
 
   // Filtros del historial
   const [fromDate, setFromDate] = useState("");
@@ -196,6 +198,32 @@ function ConsolidationForm({ org }: { org: Organization }) {
     setDeletingId(null);
     if (error) {
       window.alert("No se pudo eliminar el registro: " + error.message);
+      return;
+    }
+    await loadHistory();
+  };
+
+  const handleDeletePerson = async (person: Person) => {
+    if (!org?.id || !canDelete) return;
+    if (!window.confirm(`¿Eliminar a "${person.full_name}" del seguimiento? Se borrarán también todos sus registros del historial.`)) return;
+    setDeletingPerson(person.id);
+    const q = supabase.from("consolidations").delete().eq("organization_id", org.id);
+    const { error: recError } = person.phone
+      ? await q.or(`person_id.eq.${person.id},phone.eq.${person.phone}`)
+      : await q.eq("person_id", person.id);
+    if (recError) {
+      window.alert("No se pudo eliminar la persona: " + recError.message);
+      setDeletingPerson(null);
+      return;
+    }
+    const { error: pErr } = await supabase
+      .from("consolidation_people")
+      .delete()
+      .eq("id", person.id)
+      .eq("organization_id", org.id);
+    setDeletingPerson(null);
+    if (pErr) {
+      window.alert("No se pudo eliminar la persona: " + pErr.message);
       return;
     }
     await loadHistory();
@@ -660,6 +688,15 @@ function ConsolidationForm({ org }: { org: Organization }) {
                                   ➕ Registrar visita de hoy
                                 </button>
                               )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => handleDeletePerson(person)}
+                                  disabled={deletingPerson === person.id}
+                                  className="text-[10px] font-bold bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-600 px-3 py-1.5 rounded-xl border border-rose-200 transition-colors"
+                                >
+                                  {deletingPerson === person.id ? "..." : "🗑️ Eliminar persona"}
+                                </button>
+                              )}
                             </div>
                             {visits.length === 0 ? (
                               <p className="text-[11px] text-slate-400">Sin visitas registradas.</p>
@@ -679,16 +716,28 @@ function ConsolidationForm({ org }: { org: Organization }) {
                                         {r.note ? ` · ${r.note}` : ""}
                                       </p>
                                     </div>
-                                    {r.phone && (
-                                      <a
-                                        href={whatsappLink(org, person.full_name, r.phone)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700"
-                                      >
-                                        WhatsApp →
-                                      </a>
-                                    )}
+                                    <div className="flex items-center gap-3">
+                                      {r.phone && (
+                                        <a
+                                          href={whatsappLink(org, person.full_name, r.phone)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700"
+                                        >
+                                          WhatsApp →
+                                        </a>
+                                      )}
+                                      {canDelete && (
+                                        <button
+                                          onClick={() => handleDeleteRecord(r)}
+                                          disabled={deletingId === r.id}
+                                          title="Eliminar este registro"
+                                          className="text-[10px] text-slate-300 hover:text-red-500 transition-colors"
+                                        >
+                                          {deletingId === r.id ? "..." : "🗑️"}
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -803,7 +852,7 @@ function ConsolidationForm({ org }: { org: Organization }) {
                             >
                               WhatsApp →
                             </a>
-                            {isMember && (
+                            {canDelete && (
                               <button
                                 onClick={() => handleDeleteRecord(record)}
                                 disabled={deletingId === record.id}

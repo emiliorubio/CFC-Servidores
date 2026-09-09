@@ -59,10 +59,11 @@ export default function PlataformaPage() {
   const [savingOrg, setSavingOrg] = useState<string | null>(null);
   const [genOrg, setGenOrg] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "info" | "error"; text: string } | null>(null);
-  const [editOrg, setEditOrg] = useState<string | null>(null);
+const [editOrg, setEditOrg] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPrimary, setEditPrimary] = useState("#4F46E5");
   const [editSecondary, setEditSecondary] = useState("#0F172A");
+  const [userSearch, setUserSearch] = useState("");
 
   const loadAll = useCallback(async () => {
     const {
@@ -213,7 +214,7 @@ export default function PlataformaPage() {
     setEditOrg(church.id);
   };
 
-  const saveEdit = async (church: PlatformOrg) => {
+const saveEdit = async (church: PlatformOrg) => {
     await updateOrg(church.id, {
       name: editName.trim() || church.name,
       primary_color: editPrimary,
@@ -221,6 +222,13 @@ export default function PlataformaPage() {
     });
     setEditOrg(null);
   };
+
+  const q = userSearch.trim().toLowerCase();
+  const filteredUsers = q
+    ? users.filter(
+        (u) => u.full_name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
+      )
+    : users;
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -425,12 +433,24 @@ export default function PlataformaPage() {
         )}
 
         {tab === "usuarios" && (
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+<div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
             <h2 className="font-bold text-slate-800 text-lg">Usuarios de la plataforma</h2>
             <p className="text-xs text-slate-500">
               Cambia el rol de cualquier persona. Hacer a alguien <b>superadmin</b> le da control total
               sobre todas las iglesias.
             </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="search"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="🔎 Buscar por nombre o correo..."
+                className="flex-1 min-w-[220px] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+              <span className="text-[11px] font-bold text-slate-500">
+                {filteredUsers.length} de {users.length}
+              </span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -440,8 +460,8 @@ export default function PlataformaPage() {
                     <th className="py-2 font-bold">Rol</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {users.map((user) => (
+<tbody>
+                  {filteredUsers.map((user) => (
                     <tr key={user.id} className="border-b border-slate-100 last:border-0">
                       <td className="py-2.5 pr-3">
                         <p className="font-semibold text-slate-800">

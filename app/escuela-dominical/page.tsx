@@ -65,6 +65,8 @@ export default function EscuelaDominicalPage() {
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [attendanceInput, setAttendanceInput] = useState<Record<string, string>>({});
   const [attendanceSaving, setAttendanceSaving] = useState<Record<string, boolean>>({});
+  const [copySourceCulto, setCopySourceCulto] = useState("");
+  const [nextCultoCulto, setNextCultoCulto] = useState<EscuelaCulto | null>(null);
 
   const fetchInitialData = useCallback(async () => {
     if (!org?.id) return;
@@ -96,6 +98,10 @@ export default function EscuelaDominicalPage() {
     if (serviceData && serviceData.length > 0) {
       setCultos(serviceData as EscuelaCulto[]);
       setSelectedCulto(serviceData[0].id);
+      const nowTime = Date.now();
+      const upcoming =
+        serviceData.filter((c) => new Date(c.service_date || c.date || "").getTime() >= nowTime);
+      setNextCultoCulto((upcoming[0] as EscuelaCulto) || null);
     }
 
     if (assignData) {
@@ -285,6 +291,46 @@ export default function EscuelaDominicalPage() {
     );
   };
 
+  // Copiar el plan de clases de un culto al siguiente culto futuro
+  const handleCopyLessons = async () => {
+    if (!org?.id) return;
+    const source = cultos.find((c) => c.id === copySourceCulto);
+    if (!source || !nextCulto || nextCulto.id === source.id) {
+      setMessage({ type: "error", text: "No hay otro culto futuro al que copiar las lecciones." });
+      return;
+    }
+    const sourceLessons = lessons.filter((l) => l.service_schedule_id === source.id);
+    if (sourceLessons.length === 0) {
+      setMessage({ type: "error", text: `El culto "${source.title || "seleccionado"}" no tiene lecciones para copiar.` });
+      return;
+    }
+    if (
+      !window.confirm(
+        `¿Copiar ${sourceLessons.length} lección(es) de "${source.title || "este culto"}" a "${nextCulto.title || "el próximo culto"}"?`
+      )
+    )
+      return;
+    setSaving(true);
+    setMessage(null);
+    const { error } = await supabase.from("sunday_school_lessons").insert(
+      sourceLessons.map((l) => ({
+        service_schedule_id: nextCulto.id,
+        organization_id: org.id,
+        group_name: l.group_name,
+        topic: l.topic,
+        material_url: l.material_url,
+      }))
+    );
+    setSaving(false);
+    if (error) {
+      setMessage({ type: "error", text: "No se pudo copiar las lecciones: " + error.message });
+      return;
+    }
+    setMessage({ type: "success", text: `Lecciones copiadas a "${nextCulto.title || "el próximo culto"}" (duplicadas sin marcar).` });
+    setCopySourceCulto("");
+    await fetchInitialData();
+  };
+
   if (!orgLoading && (!canSeeEscuela || !org)) {
     return (
       <RestrictedAccess message="La programación de Escuela Dominical está disponible para el equipo de este ministerio (líderes, administradores y maestros/as con iglesia asignada)." />
@@ -298,6 +344,10 @@ export default function EscuelaDominicalPage() {
       </div>
     );
   }
+
+  // Próximo culto futuro (para copiar clases) y nombres conocidos para autocompletar
+  const nextCulto = nextCultoCulto;
+  const knownKids = [...new Set(attendance.map((a) => a.full_name))];
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -410,6 +460,33 @@ export default function EscuelaDominicalPage() {
           <div className={`${canManageEscuela ? "md:col-span-2" : "md:col-span-3"} space-y-4`}>
             <h2 className="font-bold text-slate-800 text-lg">Programación de Clases</h2>
 
+            {/* COPIAR PLAN DE CLASES AL PRÓXIMO CULTO */}
+            {canManageEscuela && cultos.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                <span className="text-xs font-bold text-amber-900">📋 Reutilizar plan de clases:</span>
+                <select
+                  value={copySourceCulto}
+                  onChange={(e) => setCopySourceCulto(e.target.value)}
+                  className="text-xs font-medium bg-white border border-amber-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="">— Elige el culto origen —</option>
+                  {cultos.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title || "Culto"} — {formatCleanDate(c)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleCopyLessons}
+                  disabled={!copySourceCulto || !nextCulto || saving}
+                  title={nextCulto ? `Copiar al próximo culto: ${nextCulto.title || "sin título"}` : "No hay un culto futuro para copiar"}
+                  className="text-xs font-bold px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl transition-colors"
+                >
+                  {saving ? "Copiando..." : `➡️ Copiar a ${nextCulto ? `"${nextCulto.title || "próximo culto"}"` : "próximo culto"}`}
+                </button>
+              </div>
+            )}
+
             {cultos.map((culto) => {
               const cultLessons = lessons.filter((l) => l.service_schedule_id === culto.id);
               
@@ -449,6 +526,16 @@ export default function EscuelaDominicalPage() {
                       <span className="text-[10px] font-bold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full">
                         {cultLessons.length} clase(s)
                       </span>
+                      {(() => {
+                        const kidCount = new Set(
+                          cultLessons.flatMap((l) => attendance.filter((a) => a.lesson_id === l.id).map((a) => a.full_name))
+                        ).size;
+                        return kidCount > 0 ? (
+                          <span className="text-[10px] font-bold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full">
+                            😄 {kidCount} niño(s)
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
 
@@ -458,9 +545,21 @@ export default function EscuelaDominicalPage() {
                       👩‍🏫 Maestra(s) / Encargado(s) Confirmados:
                     </span>
                     {kidsTeachers.length > 0 ? (
-                      <p className="text-xs font-semibold text-amber-900">
-                        👥 {kidsTeachers.map((t) => t.displayName).join(", ")}
-                      </p>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {kidsTeachers.map((t) => (
+                          <span
+                            key={t.id}
+                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5"
+                          >
+                            👥 {t.displayName}
+                            {t.resolvedArea && (
+                              <span className="font-mono text-[10px] text-amber-700 bg-white border border-amber-200 rounded-md px-1.5 py-px">
+                                {t.resolvedArea.replace("Escuela Dominical: ", "").trim()}
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
                     ) : (
                       <p className="text-[11px] text-amber-700/80 italic">
                         Sin maestras asignadas aún en el cronograma.
@@ -527,6 +626,7 @@ export default function EscuelaDominicalPage() {
                                       handleAddAttendance(lesson);
                                     }
                                   }}
+                                  list="nombres-conocidos"
                                   placeholder="Nombre del niño/niña"
                                   className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
                                 />
@@ -539,6 +639,11 @@ export default function EscuelaDominicalPage() {
                                 </button>
                               </div>
                             )}
+                            <datalist id="nombres-conocidos">
+                              {knownKids.map((n) => (
+                                <option key={n} value={n} />
+                              ))}
+                            </datalist>
                             {(() => {
                               const rows = attendance.filter((a) => a.lesson_id === lesson.id);
                               return rows.length > 0 ? (

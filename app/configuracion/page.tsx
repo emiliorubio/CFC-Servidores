@@ -86,6 +86,7 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
   };
 
   const handleDeleteTeam = async (team: MinistryTeam) => {
+    if (!window.confirm(`¿Eliminar el equipo "${team.name}"? Las asignaciones quedarán sin área.`)) return;
     const { error } = await supabase
       .from("ministry_teams")
       .delete()
@@ -140,6 +141,19 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
 
   const handleRemoveSlot = (weekday: number) =>
     setPattern((prev) => prev.filter((s) => s.weekday !== weekday));
+
+  // Genera el texto de "Horarios de culto" (bienvenida) desde los horarios estructurados
+  const applyPatternToServiceTimes = () => {
+    if (pattern.length === 0) {
+      setMessage({ type: "error", text: "Agrega al menos un horario estructurado arriba." });
+      return;
+    }
+    const text = pattern
+      .map((slot) => `${DAY_NAMES[slot.weekday]} ${slot.time}`)
+      .join(", ");
+    setServiceTimes(`${text} hrs`);
+    setMessage({ type: "success", text: "Horarios copiados al texto de bienvenida." });
+  };
 
   // Guardar cambios en la base de datos
   const handleSave = async (e: React.FormEvent) => {
@@ -372,6 +386,15 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
                 Son los que usa <strong>&ldquo;⚡ Gén. Cultos 1 mes&rdquo;</strong> en el inicio. Un horario por día; si repites un
                 día se reemplaza.
               </p>
+              {pattern.length > 0 && (
+                <button
+                  type="button"
+                  onClick={applyPatternToServiceTimes}
+                  className="mt-2 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                >
+                  ↦ Copiar al texto de bienvenida
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-3 items-end">

@@ -486,7 +486,7 @@ export default function PlataformaPage() {
               </div>
               {diagnostics && diagnostics.length > 0 && (
                 <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700">
-                  {diagnostics.filter((d) => d.applied).length}/{diagnostics.length} aplicaradas
+                  {diagnostics.filter((d) => d.applied).length}/{diagnostics.length} aplicadas
                 </span>
               )}
             </div>

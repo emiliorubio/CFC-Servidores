@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOrganization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
-import { formatearPesos } from "@/lib/format";
+import { formatearPesos, downloadCsv } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
 
 type TipoMov = "ingreso" | "gasto";
@@ -103,7 +103,7 @@ export default function FinanzasPage() {
   }, [mesActual, mesesDisponibles]);
 
   const filtrados = useMemo(() => {
-    if (mesActual === "todos") return movimientos;
+    if (mesActual === "" || mesActual === "todos") return movimientos;
     return movimientos.filter((m) => mesKey(m.fecha) === mesActual);
   }, [movimientos, mesActual]);
 
@@ -150,29 +150,19 @@ export default function FinanzasPage() {
   };
 
   const exportarCSV = () => {
-    const filas: (string | number)[][] = [
+    const periodo = mesActual === "" || mesActual === "todos" ? "completo" : mesActual;
+    downloadCsv(
+      `finanzas-${org?.slug || "iglesia"}-${periodo}.csv`,
       ["Fecha", "Tipo", "Categoría", "Descripción", "Monto (CLP)", "Registró"],
-    ];
-    filtrados.forEach((m) => {
-      filas.push([
+      filtrados.map((m) => [
         m.fecha,
         m.tipo === "ingreso" ? "Ingreso" : "Gasto",
         m.categoria || "—",
         m.descripcion,
         m.monto,
         (m.creado_por && creadores[m.creado_por]) || "—",
-      ]);
-    });
-    const csv =
-      "\uFEFF" +
-      filas.map((f) => f.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `finanzas-${org?.slug || "iglesia"}-${mesActual === "todos" ? "completo" : mesActual}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+      ])
+    );
   };
 
   if (orgLoading) {

@@ -49,7 +49,7 @@ const COOLDOWN_ESCANEO_MS = 1500;
 let ultimoEscanerRef: { codigo: string; tiempo: number } | null = null;
 
 export default function CafeteriaKiosco() {
-  const { org, loading, userRole, userProfile } = useOrganization();
+  const { org, loading, userRole } = useOrganization();
   const [productos, setProductos] = useState<Producto[]>([]);
   const [productosOk, setProductosOk] = useState(false);
   const [ventas, setVentas] = useState<Venta[]>([]);

@@ -167,11 +167,31 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
         .eq("id", session.user.id)
         .maybeSingle();
 
-      const { data: member } = await supabase
-        .from("church_members")
-        .select("organization_id, role, full_name")
-        .or(`user_id.eq.${session.user.id},id.eq.${session.user.id},email.eq.${session.user.email}`)
-        .maybeSingle();
+      interface MemberRowData {
+        organization_id: string;
+        role: string | null;
+        full_name: string | null;
+      }
+      let member: MemberRowData | null = null;
+      {
+        const { data: byUserId } = await supabase
+          .from("church_members")
+          .select("organization_id, role, full_name")
+          .eq("user_id", session.user.id)
+          .limit(1);
+        if (byUserId && byUserId.length > 0) {
+          member = byUserId[0] as MemberRowData;
+        } else if (session.user.email) {
+          const { data: byEmail } = await supabase
+            .from("church_members")
+            .select("organization_id, role, full_name")
+            .eq("email", session.user.email)
+            .limit(1);
+          if (byEmail && byEmail.length > 0) {
+            member = byEmail[0] as MemberRowData;
+          }
+        }
+      }
 
       const userOrgId = profile?.organization_id || member?.organization_id;
       const currentRole = (profile?.role || member?.role || "servidor") as UserRole;
@@ -229,11 +249,13 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
           teams.filter((t) => matchesEscuelaTeam(t.name)).map((t) => t.id)
         );
 
+        const memberOrParts = [`user_id.eq.${session.user.id}`];
+        if (session.user.email) memberOrParts.push(`email.eq.${session.user.email}`);
         const { data: memberTeams } = await supabase
           .from("church_members")
           .select("team_id")
           .eq("organization_id", finalUserOrgId)
-          .or(`user_id.eq.${session.user.id},email.eq.${session.user.email}`);
+          .or(memberOrParts.join(","));
 
         const { data: myAssigns } = await supabase
           .from("service_assignments")

@@ -190,15 +190,17 @@ export default function ServidoresPage() {
 
     setProcessing(true);
     try {
-      // Evitar duplicados: un miembro no puede anotarse dos veces al mismo culto.
+      // Evitar duplicados: un miembro no puede anotarse dos veces a la MISMA área
+      // del mismo culto (sí puede ayudar en varias áreas del mismo culto).
       const { data: existing } = await supabase
         .from("service_assignments")
         .select("id")
         .eq("service_id", selfServiceId)
         .eq("user_id", userProfile.id)
+        .eq("team_id", selfTeamId)
         .maybeSingle();
       if (existing) {
-        alert("Ya confirmaste tu asistencia en este culto. Si quieres cambiarte de área, pídele al líder que te quite de la lista.");
+        alert("Ya confirmaste tu asistencia en esta área de este culto.");
         setProcessing(false);
         return;
       }
@@ -249,6 +251,42 @@ export default function ServidoresPage() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleCancelMyAssignment = async (assignment: MyAssignment) => {
+    if (!userProfile?.id) return;
+    if (!window.confirm("¿Te desinscribes de esta confirmación?")) return;
+    setProcessing(true);
+    const { error } = await supabase
+      .from("service_assignments")
+      .delete()
+      .eq("id", assignment.id)
+      .eq("user_id", userProfile.id);
+    setProcessing(false);
+    if (error) {
+      alert("No se pudo cancelar: " + error.message);
+      return;
+    }
+    await fetchMyAssignments();
+    if (activeServiceId) await fetchDataForService(activeServiceId);
+  };
+
+  const handleRemoveAssignment = async (assignment: Assignment) => {
+    const name = assignmentName(assignment);
+    if (!window.confirm(`¿Quitar a "${name}" de la lista de este culto?`)) return;
+    setProcessing(true);
+    const { error } = await supabase
+      .from("service_assignments")
+      .delete()
+      .eq("id", assignment.id)
+      .eq("organization_id", org?.id);
+    setProcessing(false);
+    if (error) {
+      alert("No se pudo quitar: " + error.message);
+      return;
+    }
+    if (activeServiceId) await fetchDataForService(activeServiceId);
+    await fetchMyAssignments();
   };
 
   const isLeaderOrAdmin =
@@ -433,6 +471,14 @@ export default function ServidoresPage() {
                   <span className="text-[10px] font-bold text-sky-700 bg-sky-100 border border-sky-200 px-2 py-0.5 rounded-md">
                     {label}
                   </span>
+                  <button
+                    onClick={() => handleCancelMyAssignment(ma)}
+                    disabled={processing}
+                    title="Desinscribirme de este culto"
+                    className="text-xs text-slate-300 hover:text-red-500 transition-colors disabled:opacity-40"
+                  >
+                    ✕
+                  </button>
                 </div>
               );
             })}
@@ -665,13 +711,25 @@ export default function ServidoresPage() {
                 const team = teams.find((item) => item.id === assignment.team_id);
                 return (
                   <div key={assignment.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">👤 {assignmentName(assignment)}</p>
-                      <p className="text-[11px] text-indigo-600 font-semibold mt-0.5">
-                        {team?.name || assignment.role_assigned}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">👤 {assignmentName(assignment)}</p>
+                        <p className="text-[11px] text-indigo-600 font-semibold mt-0.5">
+                          {team?.name || assignment.role_assigned}
+                        </p>
+                      </div>
+                      <span className="text-[10px] rounded-full bg-emerald-100 text-emerald-700 font-bold px-2 py-1">Confirmado</span>
+                      {isLeaderOrAdmin && (
+                        <button
+                          onClick={() => handleRemoveAssignment(assignment)}
+                          disabled={processing}
+                          title="Quitar a este servidor de la lista"
+                          className="text-xs text-slate-300 hover:text-red-500 transition-colors disabled:opacity-40"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
-                    <span className="text-[10px] rounded-full bg-emerald-100 text-emerald-700 font-bold px-2 py-1">Confirmado</span>
                   </div>
                 );
               })}

@@ -15,14 +15,48 @@ function makeService() {
   return createClient(url || "", secret || "", { auth: { persistSession: false } });
 }
 
+/** Fecha local (YYYY-MM-DD) de hoy en Chile (America/Santiago), sin depender del huso del servidor. */
+function fechaDeHoyEnChile(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** Instante UTC (ISO) equivalente a las 00:00 de hoy en Chile. */
+function inicioDeHoyEnChile(): string {
+  const ahora = Date.now();
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const [fecha] = formatter.format(new Date(ahora)).split(", ");
+  const [mes, dia, anio] = fecha.split("/").map(Number);
+  const guess = Date.UTC(anio, mes - 1, dia, 0, 0);
+  const [pFecha, pHora] = formatter.format(new Date(guess)).split(", ");
+  const [pMes, pDia, pAnio] = pFecha.split("/").map(Number);
+  let horaP = Number(pHora.slice(0, 2));
+  if (horaP === 24) horaP = 0;
+  const minP = Number(pHora.slice(3, 5));
+  const targetMin = anio * 525600 + (mes - 1) * 43800 + dia * 1440;
+  const santiagoMin = pAnio * 525600 + (pMes - 1) * 43800 + pDia * 1440 + horaP * 60 + minP;
+  return new Date(guess - (santiagoMin - targetMin) * 60000).toISOString();
+}
+
 export async function GET(request: NextRequest) {
   const user = await getAuthUser(request);
   if (!url || !secret) return apiError("Faltan credenciales del servidor.", 500);
   if (!user?.organization_id) return apiError("Tu cuenta no tiene iglesia asignada.", 403);
 
   const service = makeService();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDay = inicioDeHoyEnChile();
 
   const { data, error } = await service
     .from("cafeteria_ventas")
@@ -30,7 +64,7 @@ export async function GET(request: NextRequest) {
       "id, metodo, total, cliente, created_by, created_at, cafeteria_venta_items(id, venta_id, producto_id, nombre, precio, cantidad)"
     )
     .eq("organization_id", user.organization_id)
-    .gte("created_at", startOfDay.toISOString())
+    .gte("created_at", startOfDay)
     .order("created_at", { ascending: false });
 
   if (error) return apiError("No se pudieron cargar las ventas: " + error.message, 500);
@@ -67,7 +101,7 @@ export async function POST(request: NextRequest) {
       categoria: "Cafetería",
       descripcion: `[Cafetería] ${detalle}${cliente ? ` · Cliente: ${cliente}` : ""} (Pago: ${metodo})`,
       monto: total,
-      fecha: new Date().toISOString().split("T")[0],
+      fecha: fechaDeHoyEnChile(),
       creado_por: user.id,
     })
     .select("id")

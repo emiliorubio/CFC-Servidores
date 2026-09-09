@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import { downloadCsv } from "@/lib/format";
 
 interface MemberRow {
   key: string;
@@ -152,7 +153,8 @@ export default function DirectorioPage() {
 
   const filteredMembers = members.filter((m) => {
     const matchesSearch = m.full_name.toLowerCase().includes(search.toLowerCase());
-    const matchesTeam = filterTeam === "all" || m.team_id === filterTeam;
+    const matchesTeam =
+      filterTeam === "all" || (filterTeam === "none" ? !m.team_id : m.team_id === filterTeam);
     return matchesSearch && matchesTeam;
   });
 
@@ -168,6 +170,21 @@ export default function DirectorioPage() {
     } catch {
       window.alert("No se pudo copiar la lista. Revisa los permisos del portapapeles.");
     }
+  };
+
+  const handleExportCsv = () => {
+    if (filteredMembers.length === 0) return;
+    downloadCsv(
+      `directorio-${org?.slug || "iglesia"}.csv`,
+      ["Nombre", "Área", "Rol", "WhatsApp", "Correo"],
+      filteredMembers.map((m) => [
+        m.full_name,
+        teams.find((t) => t.id === m.team_id)?.name || "Sin área",
+        roleLabel(m.role),
+        m.phone || "",
+        m.email || "",
+      ])
+    );
   };
 
   const handleAddMember = async (e: React.FormEvent) => {
@@ -361,6 +378,13 @@ export default function DirectorioPage() {
           <p className="text-xs text-slate-500 font-medium">
             Mostrando {filteredMembers.length} persona(s)
           </p>
+          <button
+            onClick={handleExportCsv}
+            disabled={filteredMembers.length === 0}
+            className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold px-3 py-2 rounded-xl transition-colors"
+          >
+            ⬇️ Exportar CSV
+          </button>
           <button
             onClick={handleCopyList}
             disabled={filteredMembers.length === 0}

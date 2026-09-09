@@ -74,6 +74,13 @@ export default function DirectorioPage() {
   const [filterTeam, setFilterTeam] = useState("all");
   const [copied, setCopied] = useState(false);
 
+  // Edición de miembro
+  const [editMember, setEditMember] = useState<MemberRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editBirth, setEditBirth] = useState("");
+
   // Alta de miembro
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -239,6 +246,41 @@ export default function DirectorioPage() {
       alert("Error al quitar miembro: " + error.message);
       return;
     }
+    await loadAll();
+  };
+
+  const openEdit = (member: MemberRow) => {
+    setEditName(member.full_name);
+    setEditPhone(member.phone || "");
+    setEditEmail(member.email || "");
+    setEditBirth((member.birth_date || "").slice(0, 10));
+    setEditMember(member);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!org?.id || !editMember || editMember.source === "profile") return;
+    if (!editName.trim()) {
+      alert("El nombre no puede quedar vacío.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("church_members")
+      .update({
+        full_name: editName.trim(),
+        phone: editPhone.trim() || null,
+        email: editEmail.trim() || null,
+        birth_date: editBirth || null,
+      })
+      .eq("id", editMember.id)
+      .eq("organization_id", org.id);
+    setSaving(false);
+    if (error) {
+      alert("No se pudo guardar: " + error.message);
+      return;
+    }
+    setEditMember(null);
     await loadAll();
   };
 
@@ -473,6 +515,26 @@ export default function DirectorioPage() {
                       </a>
                     )}
 
+                    {m.phone && (
+                      <a
+                        href={`tel:${m.phone}`}
+                        title="Llamar"
+                        className="text-[10px] font-bold text-slate-600 hover:text-slate-700 shrink-0 border border-slate-200 bg-white rounded-lg px-2 py-1 transition-colors"
+                      >
+                        📞
+                      </a>
+                    )}
+
+                    {canManage && m.source === "member" && (
+                      <button
+                        onClick={() => openEdit(m)}
+                        title="Editar datos"
+                        className="text-[10px] text-indigo-400 hover:text-indigo-600 font-bold shrink-0"
+                      >
+                        ✏️
+                      </button>
+                    )}
+
                     {canManage && m.source === "member" && (
                       <button
                         onClick={() => handleRemoveMember(m)}
@@ -488,6 +550,82 @@ export default function DirectorioPage() {
           </div>
         )}
       </div>
+
+      {/* Modal editar miembro */}
+      {editMember && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-100">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-slate-800">✏️ Editar miembro</h3>
+              <button
+                onClick={() => setEditMember(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre completo</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">WhatsApp</label>
+                <input
+                  type="tel"
+                  placeholder="Ej: +56 9 1234 5678"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Correo</label>
+                <input
+                  type="email"
+                  placeholder="Opcional"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">🎂 Cumpleaños</label>
+                <input
+                  type="date"
+                  value={editBirth}
+                  onChange={(e) => setEditBirth(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditMember(null)}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors"
+                >
+                  {saving ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

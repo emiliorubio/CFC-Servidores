@@ -61,7 +61,7 @@ export async function PATCH(request: NextRequest) {
   if (Object.keys(changes).length === 0) return apiError("No hay cambios que aplicar.", 400);
 
   const service = createClient(url, secret, { auth: { persistSession: false } });
-const { data, error } = await service
+  const { data, error } = await service
     .from("organizations")
     .update(changes)
     .eq("id", orgId)
@@ -70,4 +70,32 @@ const { data, error } = await service
 
   if (error) return apiError("No se pudo actualizar la iglesia: " + error.message, 500);
   return NextResponse.json({ org: data });
+}
+
+export async function DELETE(request: NextRequest) {
+  const superUserId = await getSuperadminUserId(request);
+  if (!superUserId) return apiError("Solo el superadmin puede acceder a la plataforma.", 403);
+  if (!url || !secret) return apiError("Faltan credenciales del servidor.", 500);
+
+  const orgId = new URL(request.url).searchParams.get("id");
+  if (!orgId) return apiError("Falta el id de la iglesia.", 400);
+
+  const service = createClient(url, secret, { auth: { persistSession: false } });
+
+  const { data: org } = await service.from("organizations").select("id, name").eq("id", orgId).maybeSingle();
+  if (!org) return apiError("No encontramos la iglesia.", 404);
+
+  // Eliminar primero las cuentas de esa iglesia (nunca al superadmin).
+  const { data: perfiles } = await service.from("profiles").select("id, role").eq("organization_id", orgId);
+  let cuentas = 0;
+  for (const p of perfiles || []) {
+    if (p.role === "superadmin") continue;
+    const { error } = await service.auth.admin.deleteUser(p.id);
+    if (!error) cuentas += 1;
+  }
+
+  const { error } = await service.from("organizations").delete().eq("id", orgId);
+  if (error) return apiError("No se pudo eliminar la iglesia: " + error.message, 500);
+
+  return NextResponse.json({ ok: true, cuentas_eliminadas: cuentas });
 }

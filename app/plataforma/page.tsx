@@ -87,6 +87,8 @@ const [orgs, setOrgs] = useState<PlatformOrg[]>([]);
   const [granted, setGranted] = useState<AccessGrant | null>(null);
   const [notifySending, setNotifySending] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deletingOrg, setDeletingOrg] = useState(false);
 
   const loadTrials = useCallback(async () => {
     const { data, error } = await supabase
@@ -213,6 +215,36 @@ if (usersRes.ok) {
       setMessage({ type: "error", text: "Error: " + (err instanceof Error ? err.message : String(err)) });
     } finally {
       setGenOrg(null);
+    }
+  };
+
+const deleteOrg = async (orgId: string) => {
+    setDeletingOrg(true);
+    setMessage(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Inicia sesión para eliminar.");
+      const res = await fetch("/api/platform/orgs?id=" + encodeURIComponent(orgId), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "No se pudo eliminar la iglesia.");
+      setMessage({
+        type: "success",
+        text:
+          "Iglesia eliminada. Se borraron " +
+          result.cuentas_eliminadas +
+          " cuenta(s) asociada(s).",
+      });
+      setConfirmDelete(null);
+      await loadAll();
+    } catch (err) {
+      setMessage({ type: "error", text: "Error: " + (err instanceof Error ? err.message : String(err)) });
+    } finally {
+      setDeletingOrg(false);
     }
   };
 
@@ -451,7 +483,13 @@ const saveEdit = async (church: PlatformOrg) => {
                       disabled={genOrg === church.id}
                       className="text-xs bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold px-3 py-2 rounded-xl transition-colors"
                     >
-                      {genOrg === church.id ? "Generando..." : "⚡ Gén. Cultos 1 mes"}
+{genOrg === church.id ? "Generando..." : "⚡ Gén. Cultos 1 mes"}
+                    </button>
+                    <button
+                      onClick={() => (confirmDelete === church.id ? setConfirmDelete(null) : setConfirmDelete(church.id))}
+                      className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold px-3 py-2 rounded-xl transition-colors"
+                    >
+                      {confirmDelete === church.id ? "Cancelar" : "🗑 Eliminar"}
                     </button>
                   </div>
                 </div>
@@ -511,6 +549,35 @@ const saveEdit = async (church: PlatformOrg) => {
                         className="text-xs bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold px-4 py-2 rounded-xl transition-colors"
                       >
                         {savingOrg === church.id ? "Guardando..." : "Guardar cambios"}
+                      </button>
+</div>
+                  </div>
+                )}
+
+                {confirmDelete === church.id && (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 space-y-3">
+                    <p className="text-sm font-bold text-rose-700">
+                      ⚠️ ¿Eliminar la iglesia «{church.name}»?
+                    </p>
+                    <p className="text-[11px] text-rose-600">
+                      Se borrarán su subdominio, cultos, miembros, equipos y las cuentas
+                      asociadas. Esta acción no se puede deshacer.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={deletingOrg}
+                        onClick={() => deleteOrg(church.id)}
+                        className="flex-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold py-2 rounded-xl text-xs transition-colors"
+                      >
+                        {deletingOrg ? "Eliminando..." : "Sí, eliminar la iglesia"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(null)}
+                        className="flex-1 border border-slate-200 bg-white text-slate-600 font-bold py-2 rounded-xl text-xs hover:bg-slate-50 transition-colors"
+                      >
+                        Conservar
                       </button>
                     </div>
                   </div>
@@ -705,20 +772,24 @@ const saveEdit = async (church: PlatformOrg) => {
                   </span>
                   . Ahora envía el correo de bienvenida para que esa persona cree su propia contraseña.
                 </p>
-                {granted.notified ? (
+                {granted.notified && (
                   <p className="text-xs font-semibold text-emerald-700">
-                    📨 Correo de bienvenida enviado a {granted.email}. También puedes volver a enviarlo si no le llegó.
+                    📨 Correo de bienvenida enviado a {granted.email}. Si no le llegó, puedes
+                    reenviarlo aquí abajo.
                   </p>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={notifySending}
-                    onClick={() => notificarTrial()}
-                    className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold px-4 py-2.5 rounded-xl transition-colors"
-                  >
-                    {notifySending ? "Enviando..." : "📨 Enviar correo de bienvenida"}
-                  </button>
                 )}
+                <button
+                  type="button"
+                  disabled={notifySending}
+                  onClick={() => notificarTrial()}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold px-4 py-2.5 rounded-xl transition-colors"
+                >
+                  {notifySending
+                    ? "Enviando..."
+                    : granted.notified
+                      ? "📨 Reenviar correo de bienvenida"
+                      : "📨 Enviar correo de bienvenida"}
+                </button>
               </div>
             )}
 

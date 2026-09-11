@@ -8,12 +8,20 @@
 alter table public.organizations
   alter column plan set default 'basico';
 
-update public.organizations
-  set plan = 'gold'
-  where plan is null or plan = 'free';
-
+-- El constraint legacy se elimina ANTES del update (si existiera con otra
+-- regla, impediría escribir las nuevas valores).
 alter table public.organizations
   drop constraint if exists organizations_plan_check;
+
+-- Estandariza valores antiguos: 'basic' (legacy) -> 'basico';
+-- 'free'/'premium' y cualquier otro valor desconocido -> 'gold'
+-- (conservan todas las funciones).
+update public.organizations
+  set plan = case
+    when plan = 'basic' then 'basico'
+    else 'gold'
+  end
+  where plan is null or plan not in ('basico', 'plata', 'gold');
 
 alter table public.organizations
   add constraint organizations_plan_check

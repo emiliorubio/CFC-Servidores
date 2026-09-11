@@ -19,6 +19,7 @@ export interface Organization {
   service_pattern?: { weekday: number; time: string }[];
   public_adoracion?: boolean;
   public_escuela?: boolean;
+  hidden_modules?: string[];
 }
 
 export type UserRole = "superadmin" | "admin" | "pastor" | "tesorero" | "coordinador" | "lider" | "servidor";

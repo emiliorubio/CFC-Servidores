@@ -983,33 +983,32 @@ export default function HomePage() {
                   })()}
                       </>
                     ) : (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center text-base shrink-0">
-                              📅
-                            </span>
-                            <p className="text-xs font-bold text-slate-800">Culto agendado</p>
-                          </div>
-                          <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white border border-slate-200 text-slate-500">
-                            Plan Básico
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-base shrink-0">
+                            🗓️
                           </span>
+                          <div>
+                            <p className="text-xs font-bold text-emerald-900">Culto publicado</p>
+                            <p className="text-[11px] text-emerald-700/80">
+                              Fechado en el cronograma para la congregación.
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-2.5 leading-relaxed">
-                          Tu culto queda en la agenda con su fecha y horario, listo para la
-                          congregación. Las áreas de servicio (adoración, escuela y ujieres)
-                          se activan con el siguiente plan.
-                        </p>
-                        {isAdminOrLider && (
-                          <Link
-                            href="/configuracion"
-                            className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
-                          >
-                            Conocer los planes
-                            <span aria-hidden>→</span>
-                          </Link>
-                        )}
+                        <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white border border-emerald-200 text-emerald-700 whitespace-nowrap">
+                          Confirmado
+                        </span>
                       </div>
+                      {isAdminOrLider && (
+                        <Link
+                          href="/configuracion"
+                          className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-950"
+                        >
+                          Ver opciones del plan<span aria-hidden>→</span>
+                        </Link>
+                      )}
+                    </div>
                     )}
                 </div>
 

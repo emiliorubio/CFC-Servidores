@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 import { formatearFechaCulto, horaCulto, downloadCsv } from "@/lib/format";
 
 interface Sermon {
@@ -166,6 +168,10 @@ export default function SermonesPage() {
 
   if (!org) {
     return <RestrictedAccess message="Debes iniciar sesión para ver el archivo de sermones de tu iglesia." />;
+  }
+
+  if (org && !moduloActivo(org.plan, "sermones")) {
+    return <PlanDisabled modulo="Sermones" />;
   }
 
   const visibles = sermones.filter(

@@ -124,6 +124,11 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   // por el superadmin desde Configuración).
   const planModuloActivo = (modulo: ModuleKey) => moduloActivo(planNormalizado(org?.plan), modulo);
 
+  // Secciones que el superadmin ocultó del menú por pedido de la iglesia
+  // (se aplican además de la restricción por plan).
+  const ocultos = new Set<string>(org?.hidden_modules || []);
+  const seccionVisible = (modulo: ModuleKey) => planModuloActivo(modulo) && !ocultos.has(modulo);
+
   // Formateador preciso de Rol
   const formatRole = (role?: string | null) => {
     const activeRole = role || userRole;
@@ -264,48 +269,48 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               Inicio / Cronograma
             </Link>
 
-            {planModuloActivo("servidores") && (
+            {seccionVisible("servidores") && (
               <Link href="/servidores" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 Servidores & Inscripción
               </Link>
             )}
 
-            {user && planModuloActivo("directorio") && (
+            {user && seccionVisible("directorio") && (
               <>
                 <Link href="/directorio" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                   📇 Directorio
                 </Link>
               </>
             )}
-            {user && planModuloActivo("consolidacion") && (
+            {user && seccionVisible("consolidacion") && (
               <Link href="/consolidacion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 🙏 Consolidación
               </Link>
             )}
-            {esLiderazgo && (
+            {esLiderazgo && !ocultos.has("grupos") && (
               <Link href="/grupos" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 👥 Grupos
               </Link>
             )}
-            {user && (
+            {user && seccionVisible("sermones") && (
               <Link href="/sermones" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 📖 Sermones
               </Link>
             )}
-            {user && planModuloActivo("cafeteria") && (
+            {user && seccionVisible("cafeteria") && (
               <Link href="/cafeteria" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 ☕ Cafetería
               </Link>
             )}
 
-            {(canSeeAdoracion && planModuloActivo("adoracion")) || (canSeeEscuela && planModuloActivo("escuela")) ? (
+            {(canSeeAdoracion && seccionVisible("adoracion")) || (canSeeEscuela && seccionVisible("escuela")) ? (
               <>
-                {canSeeAdoracion && planModuloActivo("adoracion") && (
+                {canSeeAdoracion && seccionVisible("adoracion") && (
                   <Link href="/adoracion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                     Equipo de Adoración
                   </Link>
                 )}
-                {canSeeEscuela && planModuloActivo("escuela") && (
+                {canSeeEscuela && seccionVisible("escuela") && (
                   <Link href="/escuela-dominical" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                     Escuela Dominical
                   </Link>
@@ -313,7 +318,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               </>
             ) : null}
 
-            {isFinance && planModuloActivo("finanzas") && (
+            {isFinance && seccionVisible("finanzas") && (
               <Link href="/finanzas" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 💰 Finanzas
               </Link>
@@ -321,7 +326,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
             {isAdmin && (
               <>
-                {planModuloActivo("usuarios") && (
+                {seccionVisible("usuarios") && (
                   <Link
                     href="/usuarios"
                     className="text-slate-200 hover:text-amber-400 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"

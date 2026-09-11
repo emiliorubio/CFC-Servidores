@@ -15,9 +15,10 @@ interface PlatformOrg {
   signup_visible: boolean;
   public_adoracion: boolean;
   public_escuela: boolean;
-  primary_color?: string;
+primary_color?: string;
   secondary_color?: string;
   service_pattern?: { weekday: number; time: string }[];
+  hidden_modules?: string[];
   counts: { cultos: number; miembros: number; asignaciones: number };
 }
 
@@ -61,6 +62,19 @@ const ROLE_LABELS: Record<string, string> = {
   tesorero: "Tesorero",
   superadmin: "Superadmin",
 };
+
+const SECCIONES_MENU = [
+  { key: "servidores", label: "Servidores & Inscripción" },
+  { key: "directorio", label: "Directorio" },
+  { key: "consolidacion", label: "Consolidación" },
+  { key: "grupos", label: "Grupos" },
+  { key: "sermones", label: "Sermones" },
+  { key: "adoracion", label: "Equipo de Adoración" },
+  { key: "escuela", label: "Escuela Dominical" },
+  { key: "finanzas", label: "Finanzas" },
+  { key: "cafeteria", label: "Cafetería" },
+  { key: "usuarios", label: "Usuarios" },
+] as const;
 
 export default function PlataformaPage() {
   const { userRole, loading: orgLoading, switchOrganization } = useOrganization();
@@ -166,7 +180,7 @@ if (usersRes.ok) {
     );
   }
 
-  const updateOrg = async (orgId: string, changes: Partial<PlatformOrg>) => {
+const updateOrg = async (orgId: string, changes: Partial<PlatformOrg>) => {
     setSavingOrg(orgId);
     setMessage(null);
     const {
@@ -189,6 +203,13 @@ if (usersRes.ok) {
     } finally {
       setSavingOrg(null);
     }
+  };
+
+  const toggleSeccion = async (church: PlatformOrg, modulo: string) => {
+    const actual = new Set(church.hidden_modules || []);
+    if (actual.has(modulo)) actual.delete(modulo);
+    else actual.add(modulo);
+    await updateOrg(church.id, { hidden_modules: Array.from(actual) });
   };
 
   const regenCultos = async (target: PlatformOrg) => {
@@ -613,7 +634,45 @@ const saveEdit = async (church: PlatformOrg) => {
                         />
                       </button>
                     </div>
-                  ))}
+))}
+                </div>
+
+                <div className="mt-5 border-t border-slate-100 pt-5">
+                  <p className="text-xs font-bold text-slate-800">Secciones del menú de la iglesia</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 mb-2.5">
+                    En rojo = oculta del menú de esa iglesia. Apaga la sección que la iglesia pidió quitar.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {SECCIONES_MENU.map((s) => {
+                      const oculta = (church.hidden_modules || []).includes(s.key);
+                      return (
+                        <div
+                          key={s.key}
+                          className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 transition-colors ${
+                            oculta ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-50"
+                          }`}
+                        >
+                          <p className={`text-[11px] font-semibold ${oculta ? "text-rose-700" : "text-slate-700"}`}>{s.label}</p>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={!oculta}
+                            disabled={savingOrg === church.id}
+                            onClick={() => toggleSeccion(church, s.key)}
+                            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                              oculta ? "bg-rose-400" : "bg-emerald-500"
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                                oculta ? "translate-x-0.5" : "translate-x-5"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ))}

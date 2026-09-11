@@ -10,7 +10,8 @@ export type ModuleKey =
   | "servidores"
   | "directorio"
   | "usuarios"
-  | "cafeteria";
+  | "cafeteria"
+  | "sermones";
 
 export interface PlanInfo {
   nombre: string;
@@ -34,7 +35,7 @@ export const PLANES: Record<Plan, PlanInfo> = {
     emoji: "🔥",
     color: "#4F46E5",
     descripcion:
-      "Todo lo del plan Básico más Adoración, Escuela Dominical, inscripción de Servidores, Directorio y Usuarios.",
+      "Todo lo del plan Básico más Adoración, Escuela Dominical, inscripción de Servidores, Directorio, Usuarios y Sermones.",
     modulos: [
       "inicio",
       "consolidacion",
@@ -45,6 +46,7 @@ export const PLANES: Record<Plan, PlanInfo> = {
       "servidores",
       "directorio",
       "usuarios",
+      "sermones",
     ],
   },
   gold: {
@@ -63,6 +65,7 @@ export const PLANES: Record<Plan, PlanInfo> = {
       "directorio",
       "usuarios",
       "cafeteria",
+      "sermones",
     ],
   },
 };

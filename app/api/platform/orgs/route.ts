@@ -13,6 +13,7 @@ const UPDATEABLE = [
   "public_adoracion",
   "public_escuela",
   "plan",
+  "hidden_modules",
 ] as const;
 
 export async function GET(request: NextRequest) {

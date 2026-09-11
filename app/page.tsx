@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import { formatearFechaCulto, horaCulto, downloadCsv } from "@/lib/format";
+import { moduloActivo } from "@/lib/plans";
 import Link from "next/link";
 
 interface ServiceSchedule {
@@ -319,6 +320,10 @@ export default function HomePage() {
   const upcomingAssignments = assignments.filter((a) => upcomingIdsSet.has(a.service_id)).length;
   const nextUpcoming = [...upcomingSchedules].sort((a, b) => a.service_date.localeCompare(b.service_date))[0] || null;
 
+  // En el plan Básico la inscripción de servidores no está activa: las cards
+  // muestran fechas y horarios con un bloque informativo en lugar de equipos.
+  const esServidoresActivo = org ? moduloActivo(org.plan, "servidores") : false;
+
   if (orgLoading || (loading && org?.id)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -450,22 +455,26 @@ export default function HomePage() {
             )}
           </Link>
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">👥 Confirmaciones</p>
-            <p className="text-2xl font-extrabold text-slate-800 mt-1">{upcomingAssignments}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">servidores en cultos próximos</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">🎶 Alabanza en próximos</p>
-            <p className="text-2xl font-extrabold text-purple-700 mt-1">
-              {upcomingSchedules.filter((s) => teamCountByKeyword(s.id, ["adorac", "alabanz", "música", "banda", "sonido", "plataforma"]) > 0).length}
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">de {upcomingSchedules.length} cultos</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">🎂 Cumpleaños</p>
             <p className="text-2xl font-extrabold text-rose-700 mt-1">{birthdays.length}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">esta semana</p>
           </div>
+          {esServidoresActivo && (
+            <>
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">👥 Confirmaciones</p>
+                <p className="text-2xl font-extrabold text-slate-800 mt-1">{upcomingAssignments}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">servidores en cultos próximos</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">🎶 Alabanza en próximos</p>
+                <p className="text-2xl font-extrabold text-purple-700 mt-1">
+                  {upcomingSchedules.filter((s) => teamCountByKeyword(s.id, ["adorac", "alabanz", "música", "banda", "sonido", "plataforma"]) > 0).length}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">de {upcomingSchedules.length} cultos</p>
+              </div>
+            </>
+          )}
         </section>
       )}
 
@@ -631,11 +640,13 @@ export default function HomePage() {
                     })()}
                   </p>
 
-                  {schedule.description && (
+{schedule.description && (
                     <p className="text-xs text-slate-500 line-clamp-2">{schedule.description}</p>
                   )}
 
-                  <div className="grid gap-2">
+                  {esServidoresActivo ? (
+                    <>
+                      <div className="grid gap-2">
                     {(() => {
                       const n = teamCountByKeyword(schedule.id, ["predic", "altar", "orador", "predica"]);
                       return (
@@ -716,14 +727,35 @@ export default function HomePage() {
                       </div>
                     );
                   })()}
+                      </>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 text-center">
+                        <p className="text-2xl mb-1">🌱</p>
+                        <p className="text-xs font-bold text-slate-700">Plan Básico</p>
+                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                          Este culto está agendado con su fecha y horario. Las áreas de servicio
+                          (adoración, escuela, ujieres) se habilitan al subir de plan.
+                        </p>
+                        {isAdminOrLider && (
+                          <Link
+                            href="/configuracion"
+                            className="mt-2 inline-block text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+                          >
+                            ⚙️ Configuración →
+                          </Link>
+                        )}
+                      </div>
+                    )}
                 </div>
 
+                {esServidoresActivo && (
                 <Link
                   href={`/servidores?service_id=${schedule.id}`}
                   className="w-full text-center bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2.5 rounded-xl text-xs transition-colors block"
                 >
                   Anotarme para Servir →
                 </Link>
+                )}
               </div>
             ))}
           </div>

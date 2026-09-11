@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import { formatearFechaCulto, horaCulto, downloadCsv } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 
 interface EscuelaCulto {
   id: string;
@@ -330,6 +332,10 @@ export default function EscuelaDominicalPage() {
     setCopySourceCulto("");
     await fetchInitialData();
   };
+
+  if (!orgLoading && org && !moduloActivo(org.plan, "escuela")) {
+    return <PlanDisabled modulo="Escuela Dominical" />;
+  }
 
   if (!orgLoading && (!canSeeEscuela || !org)) {
     return (

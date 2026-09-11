@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 import { downloadCsv } from "@/lib/format";
 
 interface MemberRow {
@@ -402,6 +404,8 @@ export default function DirectorioPage() {
       </div>
     );
   }
+
+  if (org && !moduloActivo(org.plan, "directorio")) return <PlanDisabled modulo="Directorio" />;
 
   if (!org || !userProfile) {
     return <RestrictedAccess message="El directorio de equipo está disponible para miembros con sesión en una iglesia asignada." />;

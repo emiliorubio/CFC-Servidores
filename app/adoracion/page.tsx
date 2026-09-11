@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import { formatearFechaCulto, horaCulto } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 
 // Roles específicos del Ministerio de Adoración
 const ADORACION_ROLES = [
@@ -379,6 +381,10 @@ export default function AdoracionPage() {
     );
     await loadAllData();
   };
+
+  if (!orgLoading && org && !moduloActivo(org.plan, "adoracion")) {
+    return <PlanDisabled modulo="Equipo de Adoración" />;
+  }
 
   if (!orgLoading && (!canSeeAdoracion || !org)) {
     return (

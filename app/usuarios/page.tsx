@@ -5,6 +5,8 @@ import { useOrganization } from "@/context/OrganizationContext";
 import type { Organization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 
 interface ProfileRow {
   id: string;
@@ -324,6 +326,7 @@ export default function UsuariosPage() {
   }
 
   const isAdmin = userRole === "admin" || userRole === "superadmin";
+  if (org && !moduloActivo(org.plan, "usuarios")) return <PlanDisabled modulo="Usuarios" />;
   if (!isAdmin || !org) {
     return (
       <RestrictedAccess message="La gestión de usuarios está disponible únicamente para administradores con una iglesia asignada." />

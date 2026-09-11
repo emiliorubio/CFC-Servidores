@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import { formatearPesos } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 
 interface Producto {
   id: string;
@@ -331,6 +333,7 @@ export default function CafeteriaKiosco() {
       </div>
     );
   }
+  if (org && !moduloActivo(org.plan, "cafeteria")) return <PlanDisabled modulo="Cafetería" />;
   if (!org) return <RestrictedAccess message="Debes tener una iglesia asignada para operar el kiosco de cafetería." />;
 
   const productosVisibles = productos.filter((p) => p.activo);

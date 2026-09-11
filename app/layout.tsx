@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import { usePathname, useRouter } from "next/navigation";
 import { OrganizationProvider, useOrganization } from "@/context/OrganizationContext";
+import { planNormalizado, moduloActivo, type ModuleKey } from "@/lib/plans";
 import "./globals.css";
 
 interface AuthProfile {
@@ -98,6 +99,10 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const displayName = profile?.full_name || user?.email;
   const isAdmin = userRole === "admin" || userRole === "superadmin";
   const isFinance = isAdmin || userRole === "pastor" || userRole === "tesorero";
+
+  // Plan de la iglesia: define qué secciones están disponibles (configurable
+  // por el superadmin desde Configuración).
+  const planModuloActivo = (modulo: ModuleKey) => moduloActivo(planNormalizado(org?.plan), modulo);
 
   // Formateador preciso de Rol
   const formatRole = (role?: string | null) => {
@@ -235,40 +240,46 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               Inicio / Cronograma
             </Link>
 
-            <Link href="/servidores" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
-              Servidores & Inscripción
-            </Link>
+            {planModuloActivo("servidores") && (
+              <Link href="/servidores" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                Servidores & Inscripción
+              </Link>
+            )}
 
-            {user && (
+            {user && planModuloActivo("directorio") && (
               <>
                 <Link href="/directorio" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                   📇 Directorio
                 </Link>
-                <Link href="/consolidacion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
-                  🙏 Consolidación
-                </Link>
-                <Link href="/cafeteria" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
-                  ☕ Cafetería
-                </Link>
               </>
             )}
+            {user && planModuloActivo("consolidacion") && (
+              <Link href="/consolidacion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                🙏 Consolidación
+              </Link>
+            )}
+            {user && planModuloActivo("cafeteria") && (
+              <Link href="/cafeteria" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                ☕ Cafetería
+              </Link>
+            )}
 
-            {(canSeeAdoracion || canSeeEscuela) && (
+            {(canSeeAdoracion && planModuloActivo("adoracion")) || (canSeeEscuela && planModuloActivo("escuela")) ? (
               <>
-                {canSeeAdoracion && (
+                {canSeeAdoracion && planModuloActivo("adoracion") && (
                   <Link href="/adoracion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                     Equipo de Adoración
                   </Link>
                 )}
-                {canSeeEscuela && (
+                {canSeeEscuela && planModuloActivo("escuela") && (
                   <Link href="/escuela-dominical" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                     Escuela Dominical
                   </Link>
                 )}
               </>
-            )}
+            ) : null}
 
-            {isFinance && (
+            {isFinance && planModuloActivo("finanzas") && (
               <Link href="/finanzas" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 💰 Finanzas
               </Link>
@@ -276,12 +287,14 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
             {isAdmin && (
               <>
-                <Link
-                  href="/usuarios"
-                  className="text-slate-200 hover:text-amber-400 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
-                >
-                  👥 Usuarios
-                </Link>
+                {planModuloActivo("usuarios") && (
+                  <Link
+                    href="/usuarios"
+                    className="text-slate-200 hover:text-amber-400 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
+                  >
+                    👥 Usuarios
+                  </Link>
+                )}
                 <Link
                   href="/configuracion"
                   className="text-amber-300 hover:text-amber-200 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"

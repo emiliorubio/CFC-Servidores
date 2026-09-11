@@ -6,6 +6,7 @@ import { useOrganization } from "@/context/OrganizationContext";
 import type { Organization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import { PLANES, LISTA_PLANES, planNormalizado, type Plan } from "@/lib/plans";
 
 interface MinistryTeam {
   id: string;
@@ -19,7 +20,7 @@ function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
 
-function ConfigureOrgForm({ org }: { org: Organization }) {
+function ConfigureOrgForm({ org, isSuperadmin }: { org: Organization; isSuperadmin: boolean }) {
   const [name, setName] = useState(org.name || "");
   const [primaryColor, setPrimaryColor] = useState(org.primary_color || "#4F46E5");
   const [secondaryColor, setSecondaryColor] = useState(org.secondary_color || "#0F172A");
@@ -33,6 +34,7 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
   const [signupVisible, setSignupVisible] = useState(org.signup_visible ?? true);
   const [publicAdoracion, setPublicAdoracion] = useState(org.public_adoracion ?? true);
   const [publicEscuela, setPublicEscuela] = useState(org.public_escuela ?? true);
+  const [plan, setPlan] = useState<Plan>(planNormalizado(org.plan));
   const [newWeekday, setNewWeekday] = useState(org.service_pattern?.[0]?.weekday ?? 0);
   const [newTime, setNewTime] = useState(org.service_pattern?.[0]?.time?.slice(0, 5) ?? "19:00");
   const [uploading, setUploading] = useState(false);
@@ -177,6 +179,7 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
           signup_visible: signupVisible,
           public_adoracion: publicAdoracion,
           public_escuela: publicEscuela,
+          ...(isSuperadmin ? { plan } : {}),
         })
         .eq("id", org.id);
 
@@ -329,6 +332,70 @@ function ConfigureOrgForm({ org }: { org: Organization }) {
                   }`}
                 />
               </button>
+            </div>
+          </div>
+
+          {/* Plan e secciones disponibles */}
+          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">📦 Plan de la iglesia</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Define qué secciones están disponibles en el menú. Solo el superadmin puede cambiarlo.
+              </p>
+            </div>
+
+            {isSuperadmin ? (
+              <select
+                value={plan}
+                onChange={(e) => setPlan(e.target.value as Plan)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {LISTA_PLANES.map((p) => (
+                  <option key={p} value={p}>
+                    {PLANES[p].emoji} {PLANES[p].nombre}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3 py-2.5">
+                <span className="text-lg">
+                  {PLANES[planNormalizado(org.plan)].emoji}
+                </span>
+                <span className="text-sm font-bold text-slate-800">
+                  {PLANES[planNormalizado(org.plan)].nombre}
+                </span>
+                <span className="text-[11px] text-slate-500">· gestionado por la plataforma</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {LISTA_PLANES.map((p) => {
+                const info = PLANES[p];
+                const current = planNormalizado(org.plan) === p;
+                return (
+                  <div
+                    key={p}
+                    className={`rounded-xl border p-3 ${current ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700"}`}
+                  >
+                    <p className="text-xs font-bold">
+                      {info.emoji} {info.nombre}
+                    </p>
+                    <p className={`text-[10px] mt-1 leading-relaxed ${current ? "text-slate-300" : "text-slate-500"}`}>
+                      {info.descripcion}
+                    </p>
+                    {isSuperadmin && (
+                      <button
+                        type="button"
+                        onClick={() => setPlan(p)}
+                        disabled={current}
+                        className={`mt-2 text-[10px] font-bold rounded-lg px-2 py-1 ${current ? "bg-white/10 text-white" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"}`}
+                      >
+                        {current ? "✓ Plan actual" : "Seleccionar"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -583,6 +650,7 @@ export function SuperadminNewOrg({ onCreated }: { onCreated?: () => void } = {})
   const [primaryColor, setPrimaryColor] = useState("#4F46E5");
   const [secondaryColor, setSecondaryColor] = useState("#0F172A");
   const [signupVisible, setSignupVisible] = useState(true);
+  const [plan, setPlan] = useState<Plan>("basico");
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -620,7 +688,7 @@ export function SuperadminNewOrg({ onCreated }: { onCreated?: () => void } = {})
       secondary_color: secondaryColor,
       signup_visible: signupVisible,
       service_pattern: [],
-      plan: "free",
+      plan,
       active_modules: {},
     });
     setCreating(false);
@@ -747,6 +815,21 @@ export function SuperadminNewOrg({ onCreated }: { onCreated?: () => void } = {})
           </button>
         </div>
 
+        <div className="md:col-span-2 space-y-2">
+          <label className="block text-sm font-bold text-slate-700">Plan de la iglesia</label>
+          <select
+            value={plan}
+            onChange={(e) => setPlan(e.target.value as Plan)}
+            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 bg-white"
+          >
+            {LISTA_PLANES.map((p) => (
+              <option key={p} value={p}>
+                {PLANES[p].emoji} {PLANES[p].nombre} — {PLANES[p].descripcion}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="md:col-span-2">
           <button
             type="submit"
@@ -783,7 +866,7 @@ export default function ConfiguracionPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-3xl mx-auto space-y-6">
-        <ConfigureOrgForm key={org.id} org={org} />
+        <ConfigureOrgForm key={org.id} org={org} isSuperadmin={userRole === "superadmin"} />
         {userRole === "superadmin" && <SuperadminNewOrg />}
       </div>
     </div>

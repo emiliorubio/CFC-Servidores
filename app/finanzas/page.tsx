@@ -6,6 +6,8 @@ import { useOrganization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
 import { formatearPesos, downloadCsv } from "@/lib/format";
 import RestrictedAccess from "@/components/RestrictedAccess";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 
 type TipoMov = "ingreso" | "gasto";
 
@@ -193,6 +195,8 @@ export default function FinanzasPage() {
       </div>
     );
   }
+
+  if (org && !moduloActivo(org.plan, "finanzas")) return <PlanDisabled modulo="Finanzas" />;
 
   if (!isFinance || !org) {
     return (

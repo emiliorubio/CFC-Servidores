@@ -6,6 +6,8 @@ import { useOrganization } from "@/context/OrganizationContext";
 import type { Organization } from "@/context/OrganizationContext";
 import { supabase } from "@/lib/supabase";
 import { downloadCsv } from "@/lib/format";
+import PlanDisabled from "@/components/PlanDisabled";
+import { moduloActivo } from "@/lib/plans";
 
 interface ConsolidationRecord {
   id: string;
@@ -1039,6 +1041,8 @@ export default function ConsolidacionPage() {
       </div>
     );
   }
+
+  if (!moduloActivo(org.plan, "consolidacion")) return <PlanDisabled modulo="Consolidación" />;
 
   return <ConsolidationForm key={org.id} org={org} />;
 }

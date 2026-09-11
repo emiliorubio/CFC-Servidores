@@ -164,17 +164,25 @@ export default function HomePage() {
   const [vista, setVista] = useState<"proximos" | "todos">("proximos");
   const [filtroTipo, setFiltroTipo] = useState("todos");
 
-  // Si llegan con el enlace del correo al sitio por defecto (token en la URL),
-  // se les reenvía a la página de creación de contraseña.
+  // Si llegan con el enlace del correo al sitio por defecto (token en la URL o
+  // código de sesión en el fragmento), se les reenvía a la página de creación
+  // de contraseña.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const th = params.get("token_hash") || params.get("token");
+    const hash = window.location.hash || "";
+    const esEnlaceCorreo =
+      hash.includes("type=recovery") ||
+      hash.includes("type=invite") ||
+      /[#&](code|access_token)=/.test(hash);
     if (th) {
       const tipo = params.get("type") || "recovery";
       window.location.replace(
         `/bienvenida?token_hash=${encodeURIComponent(th)}&type=${encodeURIComponent(tipo)}`
       );
+    } else if (esEnlaceCorreo) {
+      window.location.replace(`/bienvenida${hash}`);
     }
   }, []);
 

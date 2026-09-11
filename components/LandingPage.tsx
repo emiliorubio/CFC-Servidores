@@ -160,7 +160,7 @@ export default function LandingPage() {
             registras, inicias sesión y ves el cronograma, los grupos y los recursos de tu congregación.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs font-bold">
-            {["cfcvida", "cfcpuentealto", "habitacionrancagua", "casasionsantiago"].map((s) => (
+            {["tuiglesia", "miparroquia"].map((s) => (
               <span
                 key={s}
                 className="bg-white/10 border border-white/15 rounded-full px-4 py-2 text-indigo-100"
@@ -199,6 +199,47 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Planes y acceso */}
+      <section className="bg-white border-t border-slate-200">
+        <div className="max-w-6xl mx-auto px-4 py-16 md:py-20">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-extrabold tracking-tight">Planes y acceso</h2>
+            <p className="mt-3 text-slate-500 max-w-2xl mx-auto">
+              MiIglesia se encuentra gratis en sus distintos planes por un período de prueba,
+              para que tu congregación elija el que mejor se acomode a su tamaño y necesidades.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            {[
+              { plan: "Básico", texto: "Lo esencial para comenzar: cronograma de cultos y organización de servidores." },
+              { plan: "Plata", texto: "Para iglesias en crecimiento, con módulos adicionales para el equipo." },
+              { plan: "Gold", texto: "Todo el potencial de la plataforma, con el máximo de módulos para la iglesia." },
+            ].map((p) => (
+              <div
+                key={p.plan}
+                className="rounded-3xl border border-slate-200 bg-slate-50 p-6 text-center shadow-sm"
+              >
+                <div className="text-xs font-bold uppercase tracking-wider text-indigo-600">{p.plan}</div>
+                <p className="mt-3 text-sm text-slate-500 leading-relaxed">{p.texto}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-8 text-center">
+            <div className="inline-flex flex-col sm:flex-row items-center gap-3">
+              <Link
+                href="/login"
+                className="bg-slate-900 text-white font-bold px-6 py-3 rounded-xl text-sm hover:bg-slate-800 transition-colors shadow"
+              >
+                Probar gratis
+              </Link>
+              <p className="text-xs text-slate-500">
+                Inicia sesión y elige el plan de prueba desde la configuración de tu iglesia.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* CTA final */}
       <section className="max-w-6xl mx-auto px-4 pb-16">
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-[2rem] p-8 md:p-12 text-center shadow-xl">
@@ -220,7 +261,7 @@ export default function LandingPage() {
 
       {/* Pie */}
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
-        © 2026 MiIglesia · Centro de Formación Cristiana. Desarrollado para la edificación del cuerpo de Cristo.
+        © 2026 MiIglesia · Organización de servidores y cultos. Desarrollado para la edificación del cuerpo de Cristo.
       </footer>
     </div>
   );

@@ -126,7 +126,7 @@ export default function AuthPage() {
 
         <div className="text-center space-y-1">
           <h2 className="text-xl font-bold text-slate-800">
-            {registerOrg?.name || (enSubdominio ? "Esta iglesia" : "MiIglesia · CFC")}
+            {registerOrg?.name || (enSubdominio ? "Esta iglesia" : "MiIglesia")}
           </h2>
           <p className="text-xs text-slate-500">
             {modeRegistro

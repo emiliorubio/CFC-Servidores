@@ -164,6 +164,20 @@ export default function HomePage() {
   const [vista, setVista] = useState<"proximos" | "todos">("proximos");
   const [filtroTipo, setFiltroTipo] = useState("todos");
 
+  // Si llegan con el enlace del correo al sitio por defecto (token en la URL),
+  // se les reenvía a la página de creación de contraseña.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const th = params.get("token_hash") || params.get("token");
+    if (th) {
+      const tipo = params.get("type") || "recovery";
+      window.location.replace(
+        `/bienvenida?token_hash=${encodeURIComponent(th)}&type=${encodeURIComponent(tipo)}`
+      );
+    }
+  }, []);
+
   // Cargar cultos filtrados por la iglesia activa (se recarga al cambiar de
   // iglesia o al generar/crear nuevos cultos).
   useEffect(() => {

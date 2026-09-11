@@ -24,6 +24,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [installEvent, setInstallEvent] = useState<Event | null>(null);
+  const [pendingTrials, setPendingTrials] = useState(0);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -39,6 +40,23 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
+
+  // Aviso al superadmin: solicitudes pendientes para probar la plataforma.
+  useEffect(() => {
+    if (userRole !== "superadmin") return;
+    let activo = true;
+    const cargar = async () => {
+      const { count } = await supabase
+        .from("trial_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pendiente");
+      if (activo) setPendingTrials(count || 0);
+    };
+    cargar();
+    return () => {
+      activo = false;
+    };
+  }, [userRole, pathname]);
 
   const installApp = async () => {
     if (!installEvent) return;
@@ -326,9 +344,14 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               <>
                 <Link
                   href="/plataforma"
-                  className="text-amber-300 hover:text-amber-200 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
+                  className="relative text-amber-300 hover:text-amber-200 font-bold whitespace-nowrap transition-colors bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
                 >
                   🛠 Plataforma
+                  {pendingTrials > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-slate-900 text-[10px] font-bold flex items-center justify-center border border-slate-900/30">
+                      {pendingTrials}
+                    </span>
+                  )}
                 </Link>
               </>
             )}

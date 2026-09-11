@@ -29,6 +29,21 @@ interface PlatformUser {
   organization_name: string | null;
 }
 
+interface TrialRequest {
+  id: string;
+  full_name: string;
+  email: string;
+  church_name: string;
+  message: string | null;
+  status: "pendiente" | "aprobado" | "rechazado";
+  created_at: string;
+}
+
+interface AccessGrant {
+  email: string;
+  password: string;
+}
+
 interface DiagnosticCheck {
   key: string;
   label: string;
@@ -50,20 +65,36 @@ export default function PlataformaPage() {
   const { userRole, loading: orgLoading, switchOrganization } = useOrganization();
   const router = useRouter();
 
-  const [orgs, setOrgs] = useState<PlatformOrg[]>([]);
+const [orgs, setOrgs] = useState<PlatformOrg[]>([]);
   const [users, setUsers] = useState<PlatformUser[]>([]);
-  const [tab, setTab] = useState<"iglesias" | "usuarios" | "nueva" | "diag">("iglesias");
+  const [tab, setTab] = useState<"iglesias" | "usuarios" | "nueva" | "diag" | "pruebas">("iglesias");
   const [diagnostics, setDiagnostics] = useState<DiagnosticCheck[] | null>(null);
   const [diagError, setDiagError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingOrg, setSavingOrg] = useState<string | null>(null);
   const [genOrg, setGenOrg] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "info" | "error"; text: string } | null>(null);
-const [editOrg, setEditOrg] = useState<string | null>(null);
+  const [editOrg, setEditOrg] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPrimary, setEditPrimary] = useState("#4F46E5");
   const [editSecondary, setEditSecondary] = useState("#0F172A");
   const [userSearch, setUserSearch] = useState("");
+  const [trialRequests, setTrialRequests] = useState<TrialRequest[]>([]);
+  const [authTarget, setAuthTarget] = useState<string | null>(null);
+  const [authOrgId, setAuthOrgId] = useState("");
+  const [authSaving, setAuthSaving] = useState(false);
+  const [granted, setGranted] = useState<AccessGrant | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+
+  const loadTrials = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("trial_requests")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error && data) {
+      setTrialRequests(data as TrialRequest[]);
+    }
+  }, []);
 
   const loadAll = useCallback(async () => {
     const {
@@ -81,12 +112,13 @@ const [editOrg, setEditOrg] = useState<string | null>(null);
       const { error } = await orgsRes.json().catch(() => ({ error: "Error al cargar iglesias." }));
       setMessage({ type: "error", text: error });
     }
-    if (usersRes.ok) {
+if (usersRes.ok) {
       const { users: data } = await usersRes.json();
       setUsers(data || []);
     }
+    void loadTrials();
     setLoading(false);
-  }, []);
+  }, [loadTrials]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial del panel
@@ -182,7 +214,7 @@ const [editOrg, setEditOrg] = useState<string | null>(null);
     }
   };
 
-  const changeRole = async (userId: string, role: string) => {
+const changeRole = async (userId: string, role: string) => {
     setMessage(null);
     const {
       data: { session },
@@ -199,6 +231,51 @@ const [editOrg, setEditOrg] = useState<string | null>(null);
       setMessage({ type: "success", text: "Rol actualizado." });
     } catch (err) {
       setMessage({ type: "error", text: "Error: " + (err instanceof Error ? err.message : String(err)) });
+    }
+  };
+
+  const autorizarTrial = async (id: string) => {
+    if (!authOrgId) {
+      setMessage({ type: "error", text: "Elige la iglesia en la que autorizarás el acceso." });
+      return;
+    }
+    setAuthSaving(true);
+    setMessage(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Inicia sesión como superadmin.");
+      const res = await fetch("/api/trial-request/authorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ requestId: id, orgId: authOrgId }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "No se pudo autorizar el acceso.");
+      setGranted({ email: result.email, password: result.password });
+      setAuthTarget(null);
+      setAuthOrgId("");
+      await loadTrials();
+    } catch (err) {
+      setMessage({ type: "error", text: "Error: " + (err instanceof Error ? err.message : String(err)) });
+    } finally {
+      setAuthSaving(false);
+    }
+  };
+
+  const rechazarTrial = async (id: string) => {
+    setRejectingId(id);
+    setMessage(null);
+    try {
+      const { error } = await supabase.from("trial_requests").update({ status: "rechazado" }).eq("id", id);
+      if (error) throw error;
+      await loadTrials();
+      setMessage({ type: "info", text: "Solicitud rechazada." });
+    } catch (err) {
+      setMessage({ type: "error", text: "Error: " + (err instanceof Error ? err.message : String(err)) });
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -229,6 +306,7 @@ const saveEdit = async (church: PlatformOrg) => {
         (u) => u.full_name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
       )
     : users;
+  const pendingTrials = trialRequests.filter((r) => r.status === "pendiente");
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -285,13 +363,26 @@ const saveEdit = async (church: PlatformOrg) => {
           >
             ➕ Nueva iglesia
           </button>
-          <button
+<button
             onClick={() => setTab("diag")}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
               tab === "diag" ? "bg-slate-900 text-white" : "bg-white text-slate-600 border border-slate-200"
             }`}
           >
             🔍 Diagnóstico
+          </button>
+          <button
+            onClick={() => setTab("pruebas")}
+            className={`relative px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              tab === "pruebas" ? "bg-slate-900 text-white" : "bg-white text-slate-600 border border-slate-200"
+            }`}
+          >
+            📬 Probar la plataforma
+            {pendingTrials.length > 0 && (
+              <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-amber-400 text-slate-900 text-[10px] font-bold flex items-center justify-center">
+                {pendingTrials.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -549,6 +640,153 @@ const saveEdit = async (church: PlatformOrg) => {
                     >
                       {d.applied ? "Activo" : "Falta"}
                     </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+)}
+
+        {tab === "pruebas" && (
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-slate-800 text-lg">📬 Solicitudes para probar la plataforma</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Quienes piden probar la plataforma desde la portada llegan aquí. Al autorizar,
+                  se crea la cuenta con rol Admin en la iglesia que elijas y se muestra una
+                  contraseña temporal para entregar a la persona.
+                </p>
+              </div>
+              {pendingTrials.length > 0 && (
+                <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-amber-400 text-slate-900">
+                  {pendingTrials.length} pendiente(s)
+                </span>
+              )}
+            </div>
+
+            {granted && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
+                <p className="text-sm font-bold text-emerald-900">✅ Acceso autorizado</p>
+                <p className="text-xs text-emerald-800">
+                  Entrega estos datos a la persona. Puede iniciar sesión en el enlace de su iglesia:
+                </p>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <p className="text-xs font-mono bg-white border border-emerald-200 rounded-lg px-3 py-2 text-slate-700">
+                    {granted.email}
+                  </p>
+                  <p className="text-xs font-mono bg-white border border-emerald-200 rounded-lg px-3 py-2 text-slate-700 font-bold">
+                    {granted.password}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(`${granted.email}\n${granted.password}`)}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-2 rounded-lg transition-colors"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {trialRequests.length === 0 ? (
+              <p className="text-xs text-slate-400">Aún no hay solicitudes para probar la plataforma.</p>
+            ) : (
+              <div className="grid gap-3">
+                {trialRequests.map((req) => (
+                  <div key={req.id} className="rounded-2xl border border-slate-200 p-4 space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-slate-800">{req.full_name}</p>
+                        <p className="text-xs text-slate-500">{req.email}</p>
+                        <p className="text-[11px] text-slate-400">
+                          🏫 {req.church_name} ·{" "}
+                          {new Date(req.created_at).toLocaleDateString("es-CL", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                          req.status === "pendiente"
+                            ? "bg-amber-100 text-amber-800 border-amber-300"
+                            : req.status === "aprobado"
+                              ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                              : "bg-slate-100 text-slate-500 border-slate-200"
+                        }`}
+                      >
+                        {req.status === "pendiente" ? "Pendiente" : req.status === "aprobado" ? "Aprobado" : "Rechazado"}
+                      </span>
+                    </div>
+                    {req.message && <p className="text-xs text-slate-500 italic">“{req.message}”</p>}
+
+                    {req.status === "pendiente" && (
+                      <div className="pt-1">
+                        {authTarget === req.id ? (
+                          <div className="space-y-2 rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                            <label className="block text-xs font-bold text-slate-700">
+                              Iglesia en la que tendrá acceso
+                            </label>
+                            <select
+                              value={authOrgId}
+                              onChange={(e) => setAuthOrgId(e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+                            >
+                              <option value="">Selecciona una iglesia…</option>
+                              {orgs.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                disabled={authSaving}
+                                onClick={() => autorizarTrial(req.id)}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold py-2 rounded-xl text-xs transition-colors"
+                              >
+                                {authSaving ? "Creando cuenta..." : "Confirmar acceso"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAuthTarget(null);
+                                  setAuthOrgId("");
+                                }}
+                                className="flex-1 border border-slate-200 text-slate-600 font-bold py-2 rounded-xl text-xs hover:bg-slate-50 transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAuthTarget(req.id);
+                                setAuthOrgId("");
+                                setGranted(null);
+                              }}
+                              className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-xs transition-colors"
+                            >
+                              Autorizar acceso
+                            </button>
+                            <button
+                              type="button"
+                              disabled={rejectingId === req.id}
+                              onClick={() => rechazarTrial(req.id)}
+                              className="border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold px-4 py-2 rounded-xl text-xs transition-colors disabled:opacity-50"
+                            >
+                              {rejectingId === req.id ? "Rechazando..." : "Rechazar"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 
 const CARACTERISTICAS = [
@@ -57,13 +58,53 @@ const AUDIENCIAS = [
     texto: "Armen sus equipos por servicio, confirmen cobertura y mantengan el orden semanal sin idas y vueltas.",
   },
   {
-    icon: "🧑‍🤝‍🧑",
+    icon: "👫",
     titulo: "Servidores y voluntarios",
     texto: "Consulten sus próximos turnos, confirmen participación y reciban recordatorios de sus servicios.",
   },
 ];
 
 export default function LandingPage() {
+  const [showTrial, setShowTrial] = useState(false);
+  const [trialName, setTrialName] = useState("");
+  const [trialEmail, setTrialEmail] = useState("");
+  const [trialChurch, setTrialChurch] = useState("");
+  const [trialMessage, setTrialMessage] = useState("");
+  const [trialSending, setTrialSending] = useState(false);
+  const [trialSent, setTrialSent] = useState(false);
+  const [trialError, setTrialError] = useState("");
+
+  const abrirSolicitud = () => {
+    setTrialError("");
+    setTrialSent(false);
+    setShowTrial(true);
+  };
+
+  const enviarSolicitud = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTrialSending(true);
+    setTrialError("");
+    try {
+      const response = await fetch("/api/trial-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: trialName,
+          email: trialEmail,
+          churchName: trialChurch,
+          message: trialMessage,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "No se pudo enviar la solicitud.");
+      setTrialSent(true);
+    } catch (err) {
+      setTrialError(err instanceof Error ? err.message : "No se pudo enviar la solicitud.");
+    } finally {
+      setTrialSending(false);
+    }
+  };
+
   return (
     <div className="bg-slate-50 text-slate-800 antialiased">
       {/* Barra superior */}
@@ -74,7 +115,7 @@ export default function LandingPage() {
               ⛪
             </div>
             <div>
-              <p className="font-extrabold leading-tight">MiIglesia</p>
+              <p className="font-extrabold leading-tight">Mi Iglesia</p>
               <p className="text-[10px] uppercase tracking-wider text-slate-400">
                 Organización de servidores y cultos
               </p>
@@ -103,7 +144,7 @@ export default function LandingPage() {
             Organiza a tus servidores y tus cultos, todo en un solo lugar.
           </h1>
           <p className="mt-5 text-slate-300 max-w-2xl mx-auto text-base md:text-lg">
-            MiIglesia ayuda a cada congregación a programar sus servicios,
+            Mi Iglesia ayuda a cada congregación a programar sus servicios,
             armar sus equipos de voluntarios, registrar asistencia y cuidar a su
             gente, cada iglesia desde su propio enlace.
           </p>
@@ -205,7 +246,7 @@ export default function LandingPage() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-extrabold tracking-tight">Planes y acceso</h2>
             <p className="mt-3 text-slate-500 max-w-2xl mx-auto">
-              MiIglesia se encuentra gratis en sus distintos planes por un período de prueba,
+              Mi Iglesia se encuentra gratis en sus distintos planes por un período de prueba,
               para que tu congregación elija el que mejor se acomode a su tamaño y necesidades.
             </p>
           </div>
@@ -226,14 +267,15 @@ export default function LandingPage() {
           </div>
           <div className="mt-8 text-center">
             <div className="inline-flex flex-col sm:flex-row items-center gap-3">
-              <Link
-                href="/login"
+              <button
+                type="button"
+                onClick={abrirSolicitud}
                 className="bg-slate-900 text-white font-bold px-6 py-3 rounded-xl text-sm hover:bg-slate-800 transition-colors shadow"
               >
                 Probar gratis
-              </Link>
+              </button>
               <p className="text-xs text-slate-500">
-                Inicia sesión y elige el plan de prueba desde la configuración de tu iglesia.
+                Deja tus datos y el administrador te autorizará el acceso de prueba a tu iglesia.
               </p>
             </div>
           </div>
@@ -261,8 +303,113 @@ export default function LandingPage() {
 
       {/* Pie */}
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
-        © 2026 MiIglesia · Organización de servidores y cultos. Desarrollado para la edificación del cuerpo de Cristo.
+        © 2026 Mi Iglesia · Organización de servidores y cultos. Desarrollado para la edificación del cuerpo de Cristo.
       </footer>
+
+      {/* Modal: solicitud para probar la plataforma */}
+      {showTrial && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4" onClick={() => setShowTrial(false)}>
+          <div
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-7 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {trialSent ? (
+              <div className="text-center space-y-3 py-4">
+                <div className="text-4xl">✅</div>
+                <h3 className="text-lg font-extrabold text-slate-900">¡Solicitud enviada!</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Gracias por tu interés en probar Mi Iglesia. El administrador revisará tu
+                  solicitud y te autorizará el acceso de prueba lo antes posible.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowTrial(false)}
+                  className="mt-2 w-full bg-slate-900 text-white font-bold py-3 rounded-xl text-sm hover:bg-slate-800 transition-colors"
+                >
+                  Entendido
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="text-center space-y-1">
+                  <h3 className="text-lg font-extrabold text-slate-900">Probar Mi Iglesia gratis</h3>
+                  <p className="text-xs text-slate-500">
+                    Deja tus datos y solicitaremos tu período de prueba de la plataforma.
+                  </p>
+                </div>
+                {trialError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                    {trialError}
+                  </div>
+                )}
+                <form onSubmit={enviarSolicitud} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nombre Completo</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Tu Nombre y Apellido"
+                      value={trialName}
+                      onChange={(e) => setTrialName(e.target.value)}
+                      className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Correo Electrónico</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="ejemplo@correo.com"
+                      value={trialEmail}
+                      onChange={(e) => setTrialEmail(e.target.value)}
+                      className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nombre de tu iglesia</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Iglesia de mi ciudad"
+                      value={trialChurch}
+                      onChange={(e) => setTrialChurch(e.target.value)}
+                      className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ¿Qué necesitas? <span className="font-normal text-slate-400">(opcional)</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Cuéntanos brevemente tu situación"
+                      value={trialMessage}
+                      onChange={(e) => setTrialMessage(e.target.value)}
+                      className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowTrial(false)}
+                      className="flex-1 border border-slate-200 text-slate-600 font-bold py-3 rounded-xl text-sm hover:bg-slate-50 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={trialSending}
+                      className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl text-sm hover:bg-slate-800 transition-colors disabled:opacity-60"
+                    >
+                      {trialSending ? "Enviando..." : "Enviar solicitud"}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

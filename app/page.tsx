@@ -983,19 +983,30 @@ export default function HomePage() {
                   })()}
                       </>
                     ) : (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 text-center">
-                        <p className="text-2xl mb-1">🌱</p>
-                        <p className="text-xs font-bold text-slate-700">Plan Básico</p>
-                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                          Este culto está agendado con su fecha y horario. Las áreas de servicio
-                          (adoración, escuela, ujieres) se habilitan al subir de plan.
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center text-base shrink-0">
+                              📅
+                            </span>
+                            <p className="text-xs font-bold text-slate-800">Culto agendado</p>
+                          </div>
+                          <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white border border-slate-200 text-slate-500">
+                            Plan Básico
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-2.5 leading-relaxed">
+                          Tu culto queda en la agenda con su fecha y horario, listo para la
+                          congregación. Las áreas de servicio (adoración, escuela y ujieres)
+                          se activan con el siguiente plan.
                         </p>
                         {isAdminOrLider && (
                           <Link
                             href="/configuracion"
-                            className="mt-2 inline-block text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+                            className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
                           >
-                            ⚙️ Configuración →
+                            Conocer los planes
+                            <span aria-hidden>→</span>
                           </Link>
                         )}
                       </div>

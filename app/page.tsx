@@ -603,11 +603,19 @@ export default function HomePage() {
               </div>
             </div>
             <div className="shrink-0 mx-auto md:mx-0">
-              <img
-                src={org.logo_url || "/logo.png"}
-                alt={`Logo de ${org.name}`}
-                className="w-24 h-24 md:w-32 md:h-32 rounded-3xl border-4 border-white/30 object-cover bg-white/10"
-              />
+              {org.logo_url ? (
+                <img
+                  src={org.logo_url}
+                  alt={`Logo de ${org.name}`}
+                  className="w-24 h-24 md:w-32 md:h-32 rounded-3xl border-4 border-white/30 object-cover bg-white/10"
+                />
+              ) : (
+                <div className="w-24 h-24 md:w-32 md:h-32 rounded-3xl border-4 border-white/30 bg-white/20 flex items-center justify-center">
+                  <span className="text-white text-4xl md:text-5xl font-extrabold">
+                    {org.name.trim().charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </section>

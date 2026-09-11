@@ -209,13 +209,11 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                   className="w-full h-full object-cover rounded-xl"
                 />
               ) : (
-                <Image
-                  src="/logo.png"
-                  alt="Logo"
-                  width={34}
-                  height={34}
-                  className="object-contain filter brightness-0 invert"
-                />
+                <div className="w-full h-full rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+                  <span className="text-amber-400 font-extrabold text-xl leading-none">
+                    {(org?.name || "Mi Iglesia").trim().charAt(0).toUpperCase()}
+                  </span>
+                </div>
               )}
             </div>
 

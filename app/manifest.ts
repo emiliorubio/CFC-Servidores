@@ -44,8 +44,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
 
   // El logo institucional suele ser blanco sobre fondo transparente; la
   // variante "maskable" deja margen de seguridad sobre el color de la iglesia.
-  const name = org ? `${org.name} · Organización de Cultos` : "CFC-Servidores";
-  const shortName = org ? org.name.split(" ")[0].slice(0, 12) : "CFC";
+  const name = org ? `${org.name} · Organización de Cultos` : "Mi Iglesia";
+  const shortName = org ? org.name.split(" ")[0].slice(0, 12) : "Mi Iglesia";
   const theme = org?.secondary_color || "#0F172A";
 
   const staticIcons: NonNullable<MetadataRoute.Manifest["icons"]> = [

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function BienvenidaPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") || "recovery";
@@ -44,6 +44,37 @@ export default function BienvenidaPage() {
     void resolver();
   }, [tokenHash, type]);
 
+  const irAmiIglesia = async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (userId) {
+        const { data: perfil } = await supabase
+          .from("profiles")
+          .select("organization_id")
+          .eq("id", userId)
+          .maybeSingle();
+        if (perfil?.organization_id) {
+          const { data: orgRow } = await supabase
+            .from("organizations")
+            .select("slug")
+            .eq("id", perfil.organization_id)
+            .maybeSingle();
+          const base = window.location.hostname.split(".").slice(1).join(".");
+          if (orgRow?.slug && base) {
+            window.location.href = `https://${orgRow.slug.replace(/-/g, "")}.${base}`;
+            return;
+          }
+        }
+      }
+    } catch {
+      // Sin datos de iglesia: se cae a la raíz y el login reenvía según la cuenta.
+    }
+    router.replace("/");
+  };
+
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 8) {
@@ -60,6 +91,9 @@ export default function BienvenidaPage() {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
       setListo(true);
+      window.setTimeout(() => {
+        void irAmiIglesia();
+      }, 1500);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "No se pudo guardar la contraseña.");
     } finally {
@@ -83,14 +117,15 @@ export default function BienvenidaPage() {
           <div className="space-y-4 text-center py-4">
             <p className="text-sm font-bold text-emerald-700">✅ ¡Tu contraseña quedó lista!</p>
             <p className="text-xs text-slate-500">
-              Ya puedes ingresar con tu correo y tu nueva contraseña.
+              Te estamos llevando a la plataforma de tu iglesia…
             </p>
-            <Link
-              href="/"
+            <button
+              type="button"
+              onClick={() => void irAmiIglesia()}
               className="block w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl text-sm text-center"
             >
-              Ir a Iniciar Sesión
-            </Link>
+              Entrar a mi iglesia
+            </button>
           </div>
         )}
 

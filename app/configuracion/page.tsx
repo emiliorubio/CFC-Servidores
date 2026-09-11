@@ -264,9 +264,9 @@ function ConfigureOrgForm({ org, isSuperadmin }: { org: Organization; isSuperadm
           <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div>
               <p className="text-sm font-bold text-slate-800">Registro abierto para nuevas personas</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Si está activo, cualquiera puede crear una cuenta eligiendo esta iglesia desde /login.
-              </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Si está activo, las personas pueden crear su cuenta entrando por el enlace de esta iglesia (su subdominio).
+                </p>
             </div>
             <button
               type="button"
@@ -795,7 +795,7 @@ export function SuperadminNewOrg({ onCreated }: { onCreated?: () => void } = {})
           <div>
             <p className="text-sm font-bold text-slate-800">Registro abierto desde el inicio</p>
             <p className="text-xs text-slate-500 mt-0.5">
-              Permite que nuevas personas se registren en esta iglesia desde el inicio.
+              Permite que nuevas personas se registren en esta iglesia desde el inicio, entrando por el enlace de la iglesia.
             </p>
           </div>
           <button

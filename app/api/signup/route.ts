@@ -13,18 +13,20 @@ function slugFromRequest(request: NextRequest, localSlug?: unknown) {
     .split(":")[0]
     .toLowerCase();
 
-  const fallbackSlug = typeof localSlug === "string" ? localSlug.toLowerCase() : "";
-
+  // En desarrollo local se permite probar con el slug indicado en la URL.
   if (host === "localhost" || host === "127.0.0.1") {
-    return fallbackSlug;
+    return typeof localSlug === "string" ? localSlug.toLowerCase() : "";
   }
 
+  // En producción el registro SOLO se acepta desde el subdominio de una iglesia
+  // (ej. habitacionrancagua.miiglesia.cl). El slug lo determina el HOST, no el
+  // cliente: en el dominio raíz o www no hay registro posible.
   const [subdomain] = host.split(".");
   if (subdomain && subdomain !== "www") {
     return subdomain;
   }
 
-  return fallbackSlug;
+  return "";
 }
 
 export async function POST(request: NextRequest) {

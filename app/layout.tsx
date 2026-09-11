@@ -138,6 +138,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Estado 1b: Dominio raíz sin sesión (miiglesia.cl) — portada pública sin el
+  // marco de una iglesia: el contenido (la portada) trae su propia presentación.
+  if (!user && !org) {
+    return <div className="min-h-screen bg-slate-50">{children}</div>;
+  }
+
   // Estado 2: Usuario autenticado pero sin iglesia asignada (Protección de privacidad)
   if (user && !org) {
     return (

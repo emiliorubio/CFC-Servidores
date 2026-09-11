@@ -398,7 +398,7 @@ const saveEdit = async (church: PlatformOrg) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {(
                     [
-                      { key: "signup_visible", label: "Registro abierto", hint: "Permite crear cuentas desde /login" },
+                      { key: "signup_visible", label: "Registro abierto", hint: "Los miembros se registran por el enlace (subdominio) de esta iglesia" },
                       { key: "public_adoracion", label: "Ver Adoración (todos)", hint: "Lectura pública del repertorio" },
                       { key: "public_escuela", label: "Ver Escuela Dominical (todos)", hint: "Lectura pública de clases" },
                     ] as const

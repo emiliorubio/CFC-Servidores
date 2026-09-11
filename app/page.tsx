@@ -6,6 +6,7 @@ import { useOrganization } from "@/context/OrganizationContext";
 import { formatearFechaCulto, horaCulto, downloadCsv } from "@/lib/format";
 import { moduloActivo } from "@/lib/plans";
 import Link from "next/link";
+import LandingPage from "@/components/LandingPage";
 
 interface ServiceSchedule {
   id: string;
@@ -495,6 +496,12 @@ export default function HomePage() {
         <p className="text-sm font-medium text-slate-500">Cargando cronograma...</p>
       </div>
     );
+  }
+
+  // Portada pública: cuando se llega sin subdominio (miiglesia.cl) y no hay una
+  // iglesia resuelta, se muestra la presentación del sistema en lugar del panel.
+  if (!org) {
+    return <LandingPage />;
   }
 
   return (

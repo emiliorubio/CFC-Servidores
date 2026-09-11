@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useOrganization } from "@/context/OrganizationContext";
 import { formatearFechaCorta } from "@/lib/format";
 import PlanDisabled from "@/components/PlanDisabled";
 import { moduloActivo } from "@/lib/plans";
+import { notificacionesActivas, habilitarNotificaciones, notificar } from "@/lib/notifications";
 
 interface ServiceSchedule {
   id: string;
@@ -80,6 +81,80 @@ export default function ServidoresPage() {
   const [members, setMembers] = useState<ChurchMember[]>([]);
   const [recordatorioAbierto, setRecordatorioAbierto] = useState(false);
   const [copiandoRecordatorio, setCopiandoRecordatorio] = useState(false);
+
+  // Recordatorios del navegador (optativo, no invasivo)
+  const [notifActivas, setNotifActivas] = useState(false);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- estado inicial de recordatorios al montar
+      setNotifActivas(localStorage.getItem("recordatorios_notif") === "on" && notificacionesActivas());
+    }
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
+    };
+  }, []);
+
+  const activarRecordatorios = async () => {
+    const ok = await habilitarNotificaciones();
+    if (ok) {
+      localStorage.setItem("recordatorios_notif", "on");
+      setNotifActivas(true);
+      notificar("🔔 Recordatorios activados", "Te avisaremos antes de tus próximos servicios.");
+    } else {
+      alert("Para activar los recordatorios, acepta el permiso de notificaciones del navegador.");
+    }
+  };
+
+  const desactivarRecordatorios = () => {
+    localStorage.removeItem("recordatorios_notif");
+    setNotifActivas(false);
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  };
+
+  // Programa avisos para los servicios en los que este usuario está anotado.
+  useEffect(() => {
+    if (!notifActivas || !org?.id) return undefined;
+
+    const misCultos = myAssignments
+      .map((ma) => schedules.find((s) => s.id === ma.service_id))
+      .filter((s): s is ServiceSchedule => Boolean(s))
+      .filter((s) => new Date(s.service_date).getTime() > Date.now())
+      .sort((a, b) => a.service_date.localeCompare(b.service_date));
+
+    if (misCultos.length === 0) return undefined;
+
+    // Aviso inmediato (una sola vez) si el próximo servicio está a menos de 24 h.
+    const proximo = misCultos[0];
+    const diffMs = new Date(proximo.service_date).getTime() - Date.now();
+    if (diffMs <= 24 * 3600000) {
+      const firedKey = `aviso_${proximo.id}`;
+      if (sessionStorage.getItem(firedKey) !== "1") {
+        sessionStorage.setItem(firedKey, "1");
+        notificar(`✅ Anotado: ${proximo.title}`, "Tu servicio es dentro de pocas horas. ¡Prepárate!");
+      }
+    }
+
+    misCultos.forEach((s) => {
+      const firedKey = `recordatorio_${s.id}`;
+      if (sessionStorage.getItem(firedKey) === "1") return;
+      const target = new Date(s.service_date).getTime() - 60 * 60000;
+      if (target <= Date.now()) return;
+      const t = setTimeout(() => {
+        sessionStorage.setItem(firedKey, "1");
+        notificar(`🔔 ${s.title}`, "Estás anotado/a para este servicio. Comienza en 1 hora.");
+      }, target - Date.now());
+      timersRef.current.push(t);
+    });
+
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
+    };
+  }, [notifActivas, myAssignments, schedules, org?.id]);
 
   const fetchSchedules = useCallback(async () => {
     if (!org?.id) return;
@@ -535,14 +610,32 @@ export default function ServidoresPage() {
       {/* 1.5 Mis confirmaciones */}
       {myAssignments.length > 0 && (
         <div className="bg-sky-50/50 border border-sky-100 rounded-2xl p-6 shadow-sm space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">✅</span>
-            <div>
-              <h2 className="font-bold text-slate-800 text-base">Mis confirmaciones</h2>
-              <p className="text-xs text-slate-500">
-                Los cultos en los que ya estás anotado/a en {org?.name || "tu sede"}.
-              </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">✅</span>
+              <div>
+                <h2 className="font-bold text-slate-800 text-base">Mis confirmaciones</h2>
+                <p className="text-xs text-slate-500">
+                  Los cultos en los que ya estás anotado/a en {org?.name || "tu sede"}.
+                </p>
+              </div>
             </div>
+
+            {notifActivas ? (
+              <button
+                onClick={desactivarRecordatorios}
+                className="text-[11px] font-bold px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors"
+              >
+                🔕 Desactivar recordatorios
+              </button>
+            ) : (
+              <button
+                onClick={activarRecordatorios}
+                className="text-[11px] font-bold px-3 py-2 rounded-xl bg-white border border-sky-200 text-sky-800 hover:bg-sky-100 transition-colors"
+              >
+                🔔 Activar recordatorios de mis servicios
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">

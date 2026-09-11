@@ -26,6 +26,12 @@ interface Team {
   name: string;
 }
 
+interface FichaSistema {
+  asignaciones: { id: string; role_assigned: string; title: string; service_date: string; tipo_evento?: string }[];
+  asistencias: { id: string; title: string; service_date: string; creado: string }[];
+  grupos: { id: string; name: string }[];
+}
+
 const ROLE_COLORS: Record<string, string> = {
   admin: "bg-slate-900 text-white border-slate-900",
   superadmin: "bg-slate-900 text-white border-slate-900",
@@ -82,6 +88,11 @@ export default function DirectorioPage() {
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editBirth, setEditBirth] = useState("");
+
+  // Ficha del miembro (historial visible solo para liderazgo)
+  const [fichaMiembro, setFichaMiembro] = useState<MemberRow | null>(null);
+  const [fichaDatos, setFichaDatos] = useState<FichaSistema | null>(null);
+  const [cargandoFicha, setCargandoFicha] = useState(false);
 
   // Alta de miembro
   const [name, setName] = useState("");
@@ -262,6 +273,74 @@ export default function DirectorioPage() {
     setEditEmail(member.email || "");
     setEditBirth((member.birth_date || "").slice(0, 10));
     setEditMember(member);
+  };
+
+  const abrirFicha = async (member: MemberRow) => {
+    if (!org?.id) return;
+    setFichaMiembro(member);
+    setFichaDatos(null);
+    setCargandoFicha(true);
+    try {
+      const [asigRes, asistRes, gruposRes] = await Promise.all([
+        supabase
+          .from("service_assignments")
+          .select("id, role_assigned, manual_name, user_id, service_schedules(title, service_date, tipo_evento)")
+          .eq("organization_id", org.id),
+        supabase
+          .from("asistencia")
+          .select("id, created_at, service_schedules(title, service_date)")
+          .eq("member_id", member.id),
+        supabase
+          .from("grupo_miembros")
+          .select("grupo_id, grupos(name)")
+          .eq("member_id", member.id),
+      ]);
+      if (asigRes.error) throw asigRes.error;
+      if (asistRes.error) throw asistRes.error;
+      if (gruposRes.error) throw gruposRes.error;
+
+      const nombreNorm = member.full_name.trim().toLowerCase();
+      const asignaciones = (asigRes.data || [])
+        .filter(
+          (a) =>
+            (a.user_id && a.user_id === member.user_id) ||
+            (a.manual_name && a.manual_name.trim().toLowerCase() === nombreNorm)
+        )
+        .map((a) => {
+          const s = Array.isArray(a.service_schedules) ? a.service_schedules[0] : a.service_schedules;
+          return {
+            id: a.id,
+            role_assigned: a.role_assigned || "Servidor",
+            title: s?.title || "Culto",
+            service_date: s?.service_date || "",
+            tipo_evento: s?.tipo_evento,
+          };
+        })
+        .sort((x, y) => (y.service_date || "").localeCompare(x.service_date || ""));
+
+      const asistencias = (asistRes.data || [])
+        .map((r) => {
+          const s = Array.isArray(r.service_schedules) ? r.service_schedules[0] : r.service_schedules;
+          return {
+            id: r.id,
+            title: s?.title || "Culto",
+            service_date: s?.service_date || "",
+            creado: r.created_at || "",
+          };
+        })
+        .sort((x, y) => (y.service_date || "").localeCompare(x.service_date || ""));
+
+      const grupos = (gruposRes.data || []).map((g) => {
+        const gg = Array.isArray(g.grupos) ? g.grupos[0] : g.grupos;
+        return { id: String(g.grupo_id), name: gg?.name || "Grupo" };
+      });
+
+      setFichaDatos({ asignaciones, asistencias, grupos });
+    } catch (err) {
+      alert("No se pudo cargar la ficha: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setCargandoFicha(false);
+    }
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -690,13 +769,22 @@ export default function DirectorioPage() {
                     )}
 
                     {canManage && m.source === "member" && (
-                      <button
-                        onClick={() => openEdit(m)}
-                        title="Editar datos"
-                        className="text-[10px] text-indigo-400 hover:text-indigo-600 font-bold shrink-0"
-                      >
-                        ✏️
-                      </button>
+                      <>
+                        <button
+                          onClick={() => abrirFicha(m)}
+                          title="Ficha del miembro (historial)"
+                          className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold shrink-0"
+                        >
+                          👁️
+                        </button>
+                        <button
+                          onClick={() => openEdit(m)}
+                          title="Editar datos"
+                          className="text-[10px] text-indigo-400 hover:text-indigo-600 font-bold shrink-0"
+                        >
+                          ✏️
+                        </button>
+                      </>
                     )}
 
                     {canManage && m.source === "member" && (
@@ -787,6 +875,128 @@ export default function DirectorioPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Ficha del miembro (historial, solo liderazgo) */}
+      {fichaMiembro && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">👁️ Ficha · {fichaMiembro.full_name}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {fichaMiembro.email ? `✉️ ${fichaMiembro.email} · ` : ""}
+                  {fichaMiembro.phone ? `📱 ${fichaMiembro.phone} · ` : ""}
+                  {fichaMiembro.birth_date
+                    ? `🎂 ${new Date(fichaMiembro.birth_date).toLocaleDateString("es-CL")}`
+                    : "sin cumpleaños"}
+                </p>
+              </div>
+              <button
+                onClick={() => setFichaMiembro(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {cargandoFicha && !fichaDatos ? (
+              <p className="text-xs text-slate-400 py-6 text-center">Cargando historial...</p>
+            ) : (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-2">
+                    🛠️ Servicios prestados ({fichaDatos?.asignaciones.length ?? 0})
+                  </p>
+                  {!fichaDatos || fichaDatos.asignaciones.length === 0 ? (
+                    <p className="text-xs text-slate-400">Sin servicios registrados.</p>
+                  ) : (
+                    <ul className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                      {fichaDatos.asignaciones.map((a) => (
+                        <li
+                          key={a.id}
+                          className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2"
+                        >
+                          <span className="text-xs font-semibold text-slate-700 truncate">
+                            {a.service_date
+                              ? new Date(a.service_date).toLocaleDateString("es-CL", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                            {" · "}
+                            {a.title}
+                          </span>
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5 shrink-0">
+                            {a.role_assigned}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-2">
+                    ✅ Asistencias a cultos ({fichaDatos?.asistencias.length ?? 0})
+                  </p>
+                  {!fichaDatos || fichaDatos.asistencias.length === 0 ? (
+                    <p className="text-xs text-slate-400">Sin asistencias registradas.</p>
+                  ) : (
+                    <ul className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                      {fichaDatos.asistencias.map((r) => (
+                        <li
+                          key={r.id}
+                          className="flex items-center justify-between gap-2 bg-emerald-50/60 border border-emerald-100 rounded-xl px-3 py-2"
+                        >
+                          <span className="text-xs font-semibold text-slate-700 truncate">
+                            {r.service_date
+                              ? new Date(r.service_date).toLocaleDateString("es-CL", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                            {" · "}
+                            {r.title}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-2">
+                    👥 Grupos ({fichaDatos?.grupos.length ?? 0})
+                  </p>
+                  {!fichaDatos || fichaDatos.grupos.length === 0 ? (
+                    <p className="text-xs text-slate-400">No pertenece a ningún grupo.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {fichaDatos.grupos.map((g) => (
+                        <span
+                          key={g.id}
+                          className="text-[10px] font-bold px-2 py-1 bg-purple-50 text-purple-700 rounded-full border border-purple-200"
+                        >
+                          {g.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setFichaMiembro(null)}
+              className="w-full py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}

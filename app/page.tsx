@@ -12,6 +12,7 @@ interface ServiceSchedule {
   service_date: string;
   title: string;
   description?: string;
+  tipo_evento?: string;
   organization_id: string;
 }
 
@@ -24,6 +25,36 @@ interface ServiceAssignment {
   id: string;
   service_id: string;
   team_id: string | null;
+}
+
+interface AsistenciaRegistro {
+  id: string;
+  service_id: string;
+  member_id: string | null;
+  full_name: string;
+  created_at: string;
+}
+
+interface MiembroAsistencia {
+  id: string;
+  full_name: string;
+  email?: string | null;
+  birth_date?: string | null;
+  role?: string | null;
+}
+
+const TIPO_EVENTOS: Record<string, { label: string; emoji: string; cls: string }> = {
+  culto: { label: "Culto", emoji: "⛪", cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  retiro: { label: "Retiro", emoji: "🏕️", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  vigilia: { label: "Vigilia", emoji: "🌙", cls: "bg-purple-50 text-purple-700 border-purple-200" },
+  celebracion: { label: "Celebración", emoji: "🎉", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  boda: { label: "Boda", emoji: "💍", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+  funeral: { label: "Funeral", emoji: "🕊️", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+  otro: { label: "Otro", emoji: "📌", cls: "bg-sky-50 text-sky-700 border-sky-200" },
+};
+
+function tipoBadge(tipo?: string) {
+  return TIPO_EVENTOS[String(tipo || "culto")] || TIPO_EVENTOS.otro;
 }
 
 function santiagoDateKey(instant: string | Date): string {
@@ -63,6 +94,7 @@ export default function HomePage() {
   const [serviceDate, setServiceDate] = useState("");
   const [serviceTime, setServiceTime] = useState("10:00");
   const [description, setDescription] = useState("");
+  const [tipoEvento, setTipoEvento] = useState("culto");
   const [saving, setSaving] = useState(false);
 
   // Eliminar un culto (solo admin / pastor)
@@ -74,7 +106,17 @@ export default function HomePage() {
   const [editDate, setEditDate] = useState("");
   const [editTime, setEditTime] = useState("10:00");
   const [editDescription, setEditDescription] = useState("");
+  const [editTipo, setEditTipo] = useState("culto");
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Asistencia por culto (solo liderazgo): registro de quién asistió
+  const [asistenciaRegistros, setAsistenciaRegistros] = useState<AsistenciaRegistro[]>([]);
+  const [asistenciaCulto, setAsistenciaCulto] = useState<ServiceSchedule | null>(null);
+  const [miembrosAsistencia, setMiembrosAsistencia] = useState<MiembroAsistencia[]>([]);
+  const [asistBusqueda, setAsistBusqueda] = useState("");
+  const [nombreManual, setNombreManual] = useState("");
+  const [cargandoAsist, setCargandoAsist] = useState(false);
+  const [guardandoAsist, setGuardandoAsist] = useState(false);
 
   // Generación automática de cultos según el horario de la iglesia
   const [generating, setGenerating] = useState<number | null>(null);
@@ -119,6 +161,7 @@ export default function HomePage() {
 
   const [reloadKey, setReloadKey] = useState(0);
   const [vista, setVista] = useState<"proximos" | "todos">("proximos");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
 
   // Cargar cultos filtrados por la iglesia activa (se recarga al cambiar de
   // iglesia o al generar/crear nuevos cultos).
@@ -148,6 +191,12 @@ export default function HomePage() {
           .select("id, service_id, team_id")
           .eq("organization_id", org.id);
         if (active) setAssignments(assignData || []);
+
+        const { data: asistData } = await supabase
+          .from("asistencia")
+          .select("id, service_id, member_id, full_name, created_at")
+          .eq("organization_id", org.id);
+        if (active) setAsistenciaRegistros(asistData || []);
 
         const { data: members } = await supabase
           .from("church_members")
@@ -192,6 +241,7 @@ export default function HomePage() {
           title,
           service_date: serviceDateInstant,
           description,
+          tipo_evento: tipoEvento,
           organization_id: org.id,
         },
       ]);
@@ -203,6 +253,7 @@ export default function HomePage() {
       setServiceDate("");
       setServiceTime("10:00");
       setDescription("");
+      setTipoEvento("culto");
       setReloadKey((k) => k + 1);
     } catch (err) {
       alert("Error al guardar culto: " + (err instanceof Error ? err.message : String(err)));
@@ -213,16 +264,18 @@ export default function HomePage() {
 
   const isAdminOrLider =
     userRole === "admin" || userRole === "superadmin" || userRole === "lider" || userRole === "pastor";
+  const puedeLiderar =
+    userRole === "admin" || userRole === "superadmin" || userRole === "pastor" || userRole === "lider" || userRole === "coordinador";
   const canGenerateCultos =
     userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   const canDeleteCulto =
     userRole === "admin" || userRole === "superadmin" || userRole === "pastor";
   const orgName = org?.name || "tu iglesia";
 
-  const schedulesVisibles =
-    vista === "proximos"
+  const schedulesVisibles = (vista === "proximos"
       ? schedules.filter((s) => daysUntil(santiagoDateKey(s.service_date)) >= 0)
-      : schedules;
+      : schedules
+    ).filter((s) => filtroTipo === "todos" || (s.tipo_evento || "culto") === filtroTipo);
 
   const shortTeamName = (name: string) => name.split("(")[0].trim();
 
@@ -253,6 +306,7 @@ export default function HomePage() {
     setEditDate(local.slice(0, 10));
     setEditTime(local.slice(11, 16));
     setEditDescription(schedule.description || "");
+    setEditTipo(schedule.tipo_evento || "culto");
     setEditando(schedule);
   };
 
@@ -266,6 +320,7 @@ export default function HomePage() {
         title: editTitle.trim(),
         service_date: new Date(`${editDate}T${editTime || "10:00"}:00`).toISOString(),
         description: editDescription.trim() || null,
+        tipo_evento: editTipo,
       })
       .eq("id", editando.id)
       .eq("organization_id", org.id);
@@ -278,14 +333,123 @@ export default function HomePage() {
     setReloadKey((k) => k + 1);
   };
 
+  const abrirAsistencia = async (schedule: ServiceSchedule) => {
+    if (!org?.id) return;
+    setAsistenciaCulto(schedule);
+    setAsistBusqueda("");
+    setNombreManual("");
+    setCargandoAsist(true);
+    try {
+      const [memRes, asisRes] = await Promise.all([
+        supabase
+          .from("church_members")
+          .select("id, full_name, email, birth_date, role")
+          .eq("organization_id", org.id)
+          .order("full_name"),
+        supabase
+          .from("asistencia")
+          .select("id, service_id, member_id, full_name, created_at")
+          .eq("organization_id", org.id)
+          .eq("service_id", schedule.id),
+      ]);
+      if (memRes.error) throw memRes.error;
+      if (asisRes.error) throw asisRes.error;
+      setMiembrosAsistencia((memRes.data || []).map((m) => ({ ...m, email: m.email ?? null, birth_date: m.birth_date ?? null, role: m.role ?? null })));
+      setAsistenciaRegistros((prev) => {
+        const otros = prev.filter((r) => r.service_id !== schedule.id);
+        return [...otros, ...(asisRes.data || [])];
+      });
+    } catch (err) {
+      alert("No se pudo cargar la asistencia: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setCargandoAsist(false);
+    }
+  };
+
+  const agregarAsistencia = async (miembro: MiembroAsistencia) => {
+    if (!org?.id || !asistenciaCulto) return;
+    if (asistenciaRegistros.some((r) => r.service_id === asistenciaCulto.id && r.member_id === miembro.id)) return;
+    setGuardandoAsist(true);
+    try {
+      const { error } = await supabase.from("asistencia").insert([
+        {
+          organization_id: org.id,
+          service_id: asistenciaCulto.id,
+          member_id: miembro.id,
+          full_name: miembro.full_name,
+        },
+      ]);
+      if (error) throw error;
+      setAsistenciaRegistros((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          service_id: asistenciaCulto.id,
+          member_id: miembro.id,
+          full_name: miembro.full_name,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } catch (err) {
+      alert("No se pudo registrar asistencia: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setGuardandoAsist(false);
+    }
+  };
+
+  const registrarAsistenciaManual = async () => {
+    const nombre = nombreManual.trim();
+    if (!nombre || !org?.id || !asistenciaCulto) return;
+    setGuardandoAsist(true);
+    try {
+      const { error } = await supabase.from("asistencia").insert([
+        {
+          organization_id: org.id,
+          service_id: asistenciaCulto.id,
+          member_id: null,
+          full_name: nombre,
+        },
+      ]);
+      if (error) throw error;
+      setAsistenciaRegistros((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          service_id: asistenciaCulto.id,
+          member_id: null,
+          full_name: nombre,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      setNombreManual("");
+    } catch (err) {
+      alert("No se pudo registrar asistencia: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setGuardandoAsist(false);
+    }
+  };
+
+  const quitarAsistencia = async (registro: AsistenciaRegistro) => {
+    if (!org?.id) return;
+    const ok = confirm(`¿Quitar a "${registro.full_name}" de la asistencia?`);
+    if (!ok) return;
+    const { error } = await supabase.from("asistencia").delete().eq("id", registro.id).eq("organization_id", org.id);
+    if (error) {
+      alert("No se pudo quitar la asistencia: " + error.message);
+      return;
+    }
+    setAsistenciaRegistros((prev) => prev.filter((r) => r.id !== registro.id));
+  };
+
   const exportarCronograma = () => {
     if (!org) return;
     downloadCsv(
       `cronograma-${org.slug || "iglesia"}.csv`,
-      ["Fecha", "Culto", "Hora", "Total confirmados", "Predicador", "Alabanza", "Escuela", "Descripción"],
+      ["Fecha", "Culto", "Tipo", "Hora", "Total confirmados", "Predicador", "Alabanza", "Escuela", "Descripción"],
       schedulesVisibles.map((s) => [
         formatearFechaCulto(s.service_date),
         s.title,
+        `${tipoBadge(s.tipo_evento).emoji} ${tipoBadge(s.tipo_evento).label}`,
         horaCulto(s.service_date),
         assignmentCounts(s.id).total,
         teamCountByKeyword(s.id, ["predic", "altar", "orador", "predica"]),
@@ -574,6 +738,32 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setFiltroTipo("todos")}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+              filtroTipo === "todos"
+                ? "bg-slate-900 text-white border-slate-900"
+                : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            Todos los tipos
+          </button>
+          {Object.entries(TIPO_EVENTOS).map(([clave, t]) => (
+            <button
+              key={clave}
+              onClick={() => setFiltroTipo(clave)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                filtroTipo === clave
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : `${t.cls} border-transparent hover:opacity-80`
+              }`}
+            >
+              {t.emoji} {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
         {schedulesVisibles.length === 0 ? (
@@ -602,8 +792,27 @@ export default function HomePage() {
               >
                 <div className="space-y-3">
                   <div className="flex justify-between items-start gap-2">
-                    <h3 className="text-base font-bold text-slate-800">{schedule.title}</h3>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-slate-800 break-words">{schedule.title}</h3>
+                      {(() => {
+                        const tb = tipoBadge(schedule.tipo_evento);
+                        return (
+                          <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${tb.cls}`}>
+                            {tb.emoji} {tb.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {puedeLiderar && (
+                        <button
+                          onClick={() => abrirAsistencia(schedule)}
+                          title="Registrar asistencia"
+                          className="text-xs text-slate-300 hover:text-emerald-500 transition-colors"
+                        >
+                          ✅
+                        </button>
+                      )}
                       {isAdminOrLider && (
                         <button
                           onClick={() => openEdit(schedule)}
@@ -635,6 +844,14 @@ export default function HomePage() {
                       return chip ? (
                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${chip.cls}`}>
                           {chip.text}
+                        </span>
+                      ) : null;
+                    })()}
+                    {(() => {
+                      const n = asistenciaRegistros.filter((r) => r.service_id === schedule.id).length;
+                      return n > 0 ? (
+                        <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border-emerald-200">
+                          ✅ {n} asistente{n !== 1 ? "s" : ""}
                         </span>
                       ) : null;
                     })()}
@@ -811,6 +1028,21 @@ export default function HomePage() {
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de evento</label>
+                <select
+                  value={tipoEvento}
+                  onChange={(e) => setTipoEvento(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                >
+                  {Object.entries(TIPO_EVENTOS).map(([clave, t]) => (
+                    <option key={clave} value={clave}>
+                      {t.emoji} {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Descripción / Notas (Opcional)</label>
                 <textarea
                   rows={3}
@@ -892,6 +1124,21 @@ export default function HomePage() {
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de evento</label>
+                <select
+                  value={editTipo}
+                  onChange={(e) => setEditTipo(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                >
+                  {Object.entries(TIPO_EVENTOS).map(([clave, t]) => (
+                    <option key={clave} value={clave}>
+                      {t.emoji} {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Descripción / Notas (Opcional)</label>
                 <textarea
                   rows={3}
@@ -919,6 +1166,131 @@ export default function HomePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+    {/* Modal de Asistencia por Culto (solo liderazgo) */}
+      {asistenciaCulto && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">✅ Asistencia · {asistenciaCulto.title}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  🗓️ {formatearFechaCulto(asistenciaCulto.service_date)}
+                  {horaCulto(asistenciaCulto.service_date) && ` · ⏰ ${horaCulto(asistenciaCulto.service_date)}`}
+                </p>
+              </div>
+              <button
+                onClick={() => setAsistenciaCulto(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-slate-700 mb-2">
+                Asistentes registrados{" "}
+                <span className="text-emerald-700">
+                  ({asistenciaRegistros.filter((r) => r.service_id === asistenciaCulto.id).length})
+                </span>
+              </p>
+              {cargandoAsist ? (
+                <p className="text-xs text-slate-400 py-4 text-center">Cargando...</p>
+              ) : (
+                <ul className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {asistenciaRegistros.filter((r) => r.service_id === asistenciaCulto.id).length === 0 && (
+                    <li className="text-xs text-slate-400 text-center py-3">Aún no hay asistentes registrados.</li>
+                  )}
+                  {asistenciaRegistros
+                    .filter((r) => r.service_id === asistenciaCulto.id)
+                    .map((r) => (
+                      <li
+                        key={r.id}
+                        className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2"
+                      >
+                        <span className="text-xs font-semibold text-slate-700">{r.full_name}</span>
+                        <button
+                          onClick={() => quitarAsistencia(r)}
+                          className="text-xs text-slate-300 hover:text-red-500 transition-colors"
+                          title="Quitar"
+                        >
+                          🗑️
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Buscar miembro del directorio</label>
+              <input
+                type="text"
+                placeholder="Escribe un nombre..."
+                value={asistBusqueda}
+                onChange={(e) => setAsistBusqueda(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              />
+              <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto pr-1">
+                {miembrosAsistencia
+                  .filter((m) => m.full_name.toLowerCase().includes(asistBusqueda.trim().toLowerCase()))
+                  .filter(
+                    (m) =>
+                      !asistenciaRegistros.some(
+                        (r) => r.service_id === asistenciaCulto.id && r.member_id === m.id
+                      )
+                  )
+                  .slice(0, 12)
+                  .map((m) => (
+                    <li key={m.id}>
+                      <button
+                        onClick={() => agregarAsistencia(m)}
+                        disabled={guardandoAsist}
+                        className="w-full text-left bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 transition-colors disabled:opacity-50"
+                      >
+                        {m.full_name}
+                        {m.email ? <span className="text-slate-400 font-normal"> · {m.email}</span> : null}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+              <p className="text-[11px] text-slate-400 mt-1">
+                💡 Elige a alguien del directorio o registra un nombre libre abajo.
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                registrarAsistenciaManual();
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Nombre del visitante (no está en el directorio)"
+                value={nombreManual}
+                onChange={(e) => setNombreManual(e.target.value)}
+                className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              />
+              <button
+                type="submit"
+                disabled={guardandoAsist || !nombreManual.trim()}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl px-4 py-2.5 text-xs font-bold transition-colors disabled:opacity-50"
+              >
+                {guardandoAsist ? "..." : "+ Registrar"}
+              </button>
+            </form>
+
+            <button
+              onClick={() => setAsistenciaCulto(null)}
+              className="w-full py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}

@@ -99,6 +99,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const displayName = profile?.full_name || user?.email;
   const isAdmin = userRole === "admin" || userRole === "superadmin";
   const isFinance = isAdmin || userRole === "pastor" || userRole === "tesorero";
+  const esLiderazgo =
+    userRole === "admin" || userRole === "superadmin" || userRole === "pastor" || userRole === "lider" || userRole === "coordinador";
 
   // Plan de la iglesia: define qué secciones están disponibles (configurable
   // por el superadmin desde Configuración).
@@ -256,6 +258,16 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             {user && planModuloActivo("consolidacion") && (
               <Link href="/consolidacion" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
                 🙏 Consolidación
+              </Link>
+            )}
+            {esLiderazgo && (
+              <Link href="/grupos" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                👥 Grupos
+              </Link>
+            )}
+            {user && (
+              <Link href="/sermones" className="text-slate-200 hover:text-amber-400 whitespace-nowrap transition-colors">
+                📖 Sermones
               </Link>
             )}
             {user && planModuloActivo("cafeteria") && (

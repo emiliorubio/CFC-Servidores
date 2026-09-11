@@ -4,15 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const secret = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-function generarClaveTemporal(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let clave = "";
-  for (let i = 0; i < 10; i++) {
-    clave += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return clave;
-}
-
 export async function POST(request: NextRequest) {
   if (!url || !secret) {
     return NextResponse.json({ error: "El servidor no está configurado para autorizar accesos." }, { status: 503 });
@@ -55,11 +46,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Esta solicitud ya fue gestionada." }, { status: 409 });
   }
 
-  const clave = generarClaveTemporal();
-
+  // El usuario se crea sin contraseña: la persona la define ella misma desde el
+  // enlace que llega por correo (ver /api/trial-request/notify y /bienvenida).
   const { data: creado, error: createError } = await supabaseUser.auth.admin.createUser({
     email: solicitud.email.toLowerCase(),
-    password: clave,
     email_confirm: true,
     user_metadata: { full_name: solicitud.full_name, requested_role: "admin" },
     app_metadata: { organization_id: orgId },
@@ -99,5 +89,5 @@ export async function POST(request: NextRequest) {
     .update({ status: "aprobado", approved_at: new Date().toISOString() })
     .eq("id", requestId);
 
-  return NextResponse.json({ ok: true, email: solicitud.email.toLowerCase(), password: clave });
+  return NextResponse.json({ ok: true, email: solicitud.email.toLowerCase() });
 }

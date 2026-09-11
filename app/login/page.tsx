@@ -43,6 +43,26 @@ export default function AuthPage() {
 
   const registerOrg = org && org.id ? org : null;
 
+  const enviarRecuperacion = async () => {
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      if (!email) throw new Error("Escribe tu correo para recibir el enlace.");
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/bienvenida",
+      });
+      if (error) throw error;
+      setSuccessMsg(
+        "Te enviamos un enlace para crear una nueva contraseña. Revisa tu correo (y la carpeta de spam)."
+      );
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "No se pudo enviar el enlace.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -254,6 +274,19 @@ export default function AuthPage() {
               <p className="text-[11px] text-slate-500 mt-1">Mínimo 8 caracteres.</p>
             )}
           </div>
+
+          {!modeRegistro && (
+            <div className="text-right">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => enviarRecuperacion()}
+                className="text-[11px] font-bold text-slate-500 hover:text-slate-800 disabled:opacity-50"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"

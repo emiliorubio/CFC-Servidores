@@ -41,7 +41,8 @@ interface TrialRequest {
 
 interface AccessGrant {
   email: string;
-  password: string;
+  requestId: string;
+  notified?: boolean;
 }
 
 interface DiagnosticCheck {
@@ -84,6 +85,7 @@ const [orgs, setOrgs] = useState<PlatformOrg[]>([]);
   const [authOrgId, setAuthOrgId] = useState("");
   const [authSaving, setAuthSaving] = useState(false);
   const [granted, setGranted] = useState<AccessGrant | null>(null);
+  const [notifySending, setNotifySending] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
 
   const loadTrials = useCallback(async () => {
@@ -253,7 +255,7 @@ const changeRole = async (userId: string, role: string) => {
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "No se pudo autorizar el acceso.");
-      setGranted({ email: result.email, password: result.password });
+      setGranted({ email: result.email, requestId: id });
       setAuthTarget(null);
       setAuthOrgId("");
       await loadTrials();
@@ -261,6 +263,34 @@ const changeRole = async (userId: string, role: string) => {
       setMessage({ type: "error", text: "Error: " + (err instanceof Error ? err.message : String(err)) });
     } finally {
       setAuthSaving(false);
+    }
+  };
+
+  const notificarTrial = async () => {
+    if (!granted) return;
+    setNotifySending(true);
+    setMessage(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Inicia sesión como superadmin.");
+      const res = await fetch("/api/trial-request/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ requestId: granted.requestId }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "No se pudo enviar el correo.");
+      setGranted({ ...granted, notified: true });
+      setMessage({
+        type: "success",
+        text: `Correo de bienvenida enviado a ${granted.email}. Revisa que llegue a la bandeja de entrada o de spam.`,
+      });
+    } catch (err) {
+      setMessage({ type: "error", text: "Error: " + (err instanceof Error ? err.message : String(err)) });
+    } finally {
+      setNotifySending(false);
     }
   };
 
@@ -654,8 +684,8 @@ const saveEdit = async (church: PlatformOrg) => {
                 <h2 className="font-bold text-slate-800 text-lg">📬 Solicitudes para probar la plataforma</h2>
                 <p className="text-xs text-slate-500 mt-1">
                   Quienes piden probar la plataforma desde la portada llegan aquí. Al autorizar,
-                  se crea la cuenta con rol Admin en la iglesia que elijas y se muestra una
-                  contraseña temporal para entregar a la persona.
+                  se crea la cuenta con rol Admin en la iglesia que elijas y se envía por correo
+                  un enlace para que la persona cree su propia contraseña.
                 </p>
               </div>
               {pendingTrials.length > 0 && (
@@ -666,26 +696,29 @@ const saveEdit = async (church: PlatformOrg) => {
             </div>
 
             {granted && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
                 <p className="text-sm font-bold text-emerald-900">✅ Acceso autorizado</p>
                 <p className="text-xs text-emerald-800">
-                  Entrega estos datos a la persona. Puede iniciar sesión en el enlace de su iglesia:
-                </p>
-                <div className="flex flex-wrap gap-2 items-center">
-                  <p className="text-xs font-mono bg-white border border-emerald-200 rounded-lg px-3 py-2 text-slate-700">
+                  Cuenta creada para{" "}
+                  <span className="font-mono font-bold bg-white border border-emerald-200 rounded-lg px-2 py-0.5">
                     {granted.email}
+                  </span>
+                  . Ahora envía el correo de bienvenida para que esa persona cree su propia contraseña.
+                </p>
+                {granted.notified ? (
+                  <p className="text-xs font-semibold text-emerald-700">
+                    📨 Correo de bienvenida enviado a {granted.email}. También puedes volver a enviarlo si no le llegó.
                   </p>
-                  <p className="text-xs font-mono bg-white border border-emerald-200 rounded-lg px-3 py-2 text-slate-700 font-bold">
-                    {granted.password}
-                  </p>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => navigator.clipboard?.writeText(`${granted.email}\n${granted.password}`)}
-                    className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-2 rounded-lg transition-colors"
+                    disabled={notifySending}
+                    onClick={() => notificarTrial()}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold px-4 py-2.5 rounded-xl transition-colors"
                   >
-                    Copiar
+                    {notifySending ? "Enviando..." : "📨 Enviar correo de bienvenida"}
                   </button>
-                </div>
+                )}
               </div>
             )}
 
